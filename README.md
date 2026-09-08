@@ -89,3 +89,21 @@ use Fly.io (or a VPS) for real users.
 
 Moving servers later: copy the `data/` folder over and everything
 (accounts, libraries, progress, published Originals) comes along.
+
+## Static build (GitHub Pages, no server)
+
+The full app above needs Node running. For a free server-less mirror, use the
+static build instead:
+
+- **`website-standalone/index.html`** (ask for a fresh copy) — the entire site
+  in ONE file. Upload just this file to your repo root as `index.html`,
+  enable Pages, done. No folders, no paths to get wrong.
+- Or push the repo and serve **`docs/`** (Pages → Deploy from branch → `/docs`).
+
+Both need one thing to show comics: a free Cloudflare Worker proxy
+(`worker/worker.js`), because browsers are blocked from calling MangaDex
+directly. Deploy it (`npx wrangler deploy`), then replace
+`REPLACE-WITH-YOUR-WORKER` at the top of the JS with your worker address.
+
+Static trade-offs: bookmarks, continue-reading and settings live in each
+browser only. No accounts/sync, comments, likes, or Originals uploads.
