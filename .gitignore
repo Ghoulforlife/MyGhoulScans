@@ -1,0 +1,9 @@
+# Dependencies (recreated with `npm install`)
+node_modules/
+
+# Local database + uploads (user accounts, reading data, published comics).
+# Copy the data/ folder directly to your server — never push it to a public repo.
+data/
+
+# Secrets
+.env

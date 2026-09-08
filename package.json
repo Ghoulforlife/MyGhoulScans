@@ -1,0 +1,19 @@
+{
+  "name": "myghoulscans",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyGhoulScans - ad-free manhwa reader powered by the MangaDex API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "multer": "^2.3.0"
+  }
+}

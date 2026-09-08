@@ -1,0 +1,19 @@
+# Render Blueprint — one-click deploy for MyGhoulScans.
+# NOTE: the disk below (which keeps accounts, libraries and uploads alive
+# across restarts) needs a paid instance type on Render. On the free tier the
+# filesystem is ephemeral, so user data is wiped on every restart — fine for
+# a demo, not for real users. See README "Deploy" for the free alternative.
+services:
+  - type: web
+    name: myghoulscans
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: COOKIE_SECURE
+        value: 1
+    disk:
+      name: myghoulscans-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
