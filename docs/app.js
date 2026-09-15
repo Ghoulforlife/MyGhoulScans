@@ -7,7 +7,7 @@ let currentUser = null;
 // Static build: MangaDex reads go through your Cloudflare worker (worker.js),
 // which adds CORS + caching. Covers/pages come straight from MangaDex's CDN.
 // 1. Deploy worker/ to Cloudflare, 2. paste your worker URL below.
-const API_BASE = 'https://REPLACE-WITH-YOUR-WORKER.workers.dev';
+const API_BASE = 'https://myghoulscans-api.kev2op2021.workers.dev';
 async function api(path, opts = {}) {
   let url = path;
   if (path.startsWith('/api/mdex/')) url = API_BASE + path.slice('/api/mdex'.length);
@@ -1080,7 +1080,7 @@ async function renderReader(mangaId, chapterId, startPage) {
     const base = atHome.baseUrl;
     const saver = atHome.chapter.dataSaver || [];
     const full = atHome.chapter.data || [];
-    const p = (u) => `/api/img?u=${encodeURIComponent(u)}`;
+    const p = (u) => u; // static build: pages load straight from MangaDex's CDN (no-referrer defeats hotlink protection)
     // Preferred quality first — but if the chapter only ships the other one
     // (e.g. no full-quality files), fall back instead of showing zero pages.
     let useSaver = saver.length > 0 && loadPrefs().useSaver;
