@@ -8,6 +8,17 @@ let currentUser = null;
 // which adds CORS + caching. Covers/pages come straight from MangaDex's CDN.
 // 1. Deploy worker/ to Cloudflare, 2. paste your worker URL below.
 const API_BASE = 'https://myghoulscans-api.kev2op2021.workers.dev';
+// Sign-in token (Bearer). The worker API lives on another origin, so the
+// session travels as a token instead of a cookie.
+function getToken() {
+  try { return localStorage.getItem('mgs_token'); } catch { return null; }
+}
+function setToken(t) {
+  try {
+    if (t) localStorage.setItem('mgs_token', t);
+    else localStorage.removeItem('mgs_token');
+  } catch {}
+}
 async function api(path, opts = {}) {
   let url = path;
   if (path.startsWith('/api/mdex/')) url = API_BASE + path.slice('/api/mdex'.length);
@@ -15,10 +26,22 @@ async function api(path, opts = {}) {
     const m = path.match(/^\/api\/img\?u=([^&]+)/);
     if (!m) throw new Error('Bad image URL');
     url = decodeURIComponent(m[1]);
+  } else if (path.startsWith('/api/')) {
+    url = API_BASE + path.slice('/api'.length);
   } else {
     throw new Error('Not available in this build');
   }
-  const res = await fetch(url, { ...opts });
+  const headers = { ...(opts.headers || {}) };
+  if (typeof opts.body === 'string' && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    refreshAuth();
+    const e = new Error('not-authed');
+    e.status = 401;
+    throw e;
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const e = new Error(body.error || `Request failed (${res.status})`);
@@ -104,17 +127,84 @@ function mangaCard(data, opts = {}) {
 
 function spinner(n = 1) { return '<div class="spinner"></div>'.repeat(n); }
 
-// ---------- auth (static build: no accounts — library & progress live in this browser) ----------
+// Profile picture: generated initial icon (unique hue per user)
+function avatarUrl(u) {
+  if (!u) return 'assets/chibi.png';
+  return `${API_BASE}/auth/avatar/${u.id}.svg`;
+}
+
+// ---------- auth ----------
 async function refreshAuth() {
-  currentUser = null;
+  try {
+    currentUser = (await api('/api/auth/me')).user;
+  } catch { currentUser = null; }
   const a = $('#authArea');
-  if (a) a.style.display = 'none';
+  const short = window.innerWidth <= 640;
+  a.innerHTML = currentUser
+    ? `<a href="#/account" title="Account settings" aria-label="Account settings"><img class="avatar" src="${avatarUrl(currentUser)}" alt="" /></a>`
+    : `<button class="btn" id="loginBtn">${short ? 'Log in' : 'Log in / Sign up'}</button>`;
+  a.querySelector('#loginBtn')?.addEventListener('click', () => openAuthModal(false));
+}
+
+async function doLogout() {
+  const tok = getToken();
+  setToken(null);
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+    });
+  } catch {}
+  currentUser = null;
+  refreshAuth();
+  toast('Logged out');
+  route();
 }
 
 function closeModal() {
   $('#modal').classList.add('hidden');
   $('#modalContent').innerHTML = '';
 }
+
+function openAuthModal(signup = false) {
+  $('#modal').classList.remove('hidden');
+  $('#modalContent').innerHTML = `
+    <img class="auth-logo" src="assets/chibi.png" alt="MyGhoulScans" />
+    <h2>${signup ? 'Create account' : 'Welcome back'}</h2>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@example.com" /></div>
+    <div class="field"><label>Password</label><input id="authPass" type="password" placeholder="${signup ? 'At least 6 characters' : 'Your password'}" /></div>
+    ${signup ? `<div class="field"><label>Display name (optional, unique)</label><input id="authName" type="text" maxlength="24" placeholder="Ghoul — 2–24 characters" /></div>` : ''}
+    <button class="btn primary" id="authSubmit" style="width:100%">${signup ? 'Sign up' : 'Log in'}</button>
+    <div class="error" id="authError"></div>
+    <div class="auth-switch">${signup ? 'Already have an account?' : 'New here?'} <a id="authSwitch">${signup ? 'Log in' : 'Sign up'}</a></div>
+  `;
+  const submit = async () => {
+    const email = $('#authEmail').value.trim();
+    const password = $('#authPass').value;
+    const name = $('#authName')?.value.trim();
+    const errEl = $('#authError');
+    errEl.textContent = '';
+    try {
+      const j = await api(signup ? '/api/auth/signup' : '/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(signup ? { email, password, displayName: name } : { email, password }),
+      });
+      if (j.token) setToken(j.token);
+      closeModal();
+      refreshAuth();
+      toast(signup ? 'Account created!' : 'Logged in!');
+      route();
+    } catch (e) {
+      errEl.textContent = e.message;
+    }
+  };
+  $('#authSubmit').addEventListener('click', submit);
+  $('#authPass').addEventListener('keydown', (e) => e.key === 'Enter' && submit());
+  $('#authSwitch').addEventListener('click', () => openAuthModal(!signup));
+  $('#authEmail').focus();
+}
+
+$('#modalClose').addEventListener('click', closeModal);
 
 $('#modalClose').addEventListener('click', closeModal);
 $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
@@ -142,6 +232,7 @@ function route() {
   if (page === 'reader') return renderReader(parts[1], parts[2], parseInt(parts[3], 10) || 0);
   if (page === 'library') return renderLibrary();
   if (page === 'popular') return renderPopular();
+  if (page === 'account') return renderAccount();
   renderHome();
 }
 
@@ -245,11 +336,14 @@ async function syncBookmarksFromServer() {
   } catch {}
 }
 async function toggleBookmark(id) {
-  // Static build: bookmarks live in this browser only.
+  // Bookmarks sync to your account when signed in (guests get the login form).
+  if (!currentUser) { openAuthModal(false); toast('Sign in to bookmark titles'); return null; }
   const set = localBookmarks();
   const adding = !set.has(id);
   set.has(id) ? set.delete(id) : set.add(id);
   setLocalBookmarks(set);
+  try { await api(`/api/library/${id}`, { method: adding ? 'POST' : 'DELETE' }); }
+  catch (e) { toast(e.message); }
   return adding;
 }
 
@@ -744,6 +838,10 @@ async function renderTitle(mangaId) {
 
     let followed = localBookmarks().has(mangaId);
     let progress = (localProgress())[mangaId] || null;
+    if (currentUser) {
+      try { followed = (await api(`/api/library/${mangaId}/status`)).followed; } catch {}
+      try { const sp = await api(`/api/progress/${mangaId}`); if (sp && sp.chapter_id) progress = sp; } catch {}
+    }
 
     const status = manga.attributes.status;
     const authors = (manga.relationships || []).filter((r) => r.type === 'author').map((r) => r.attributes?.name).filter(Boolean);
@@ -771,7 +869,7 @@ async function renderTitle(mangaId) {
           ${tags.length ? `<div class="chips">${tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
           <div class="title-actions">
             ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || progress.chapter_id.slice(0, 8))} &#183; p.${progress.page + 1}</button>` : ''}
-            <button class="btn ${followed ? 'primary' : ''}" id="followBtn">${followed ? 'Bookmarked' : 'Bookmark'}</button>
+            <button class="btn ${followed ? 'primary' : ''}" id="followBtn">${currentUser ? (followed ? 'In Library' : 'Add to Library') : 'Bookmark'}</button>
           </div>
           <div class="small" style="margin-top:6px">${chapters.length} readable chapters</div>
         </div>
@@ -802,7 +900,7 @@ async function renderTitle(mangaId) {
       const r = await toggleBookmark(mangaId);
       if (r == null) return; // login prompt shown instead
       const nowF = localBookmarks().has(mangaId);
-      $('#followBtn').textContent = nowF ? 'Bookmarked' : 'Bookmark';
+      $('#followBtn').textContent = currentUser ? (nowF ? 'In Library' : 'Add to Library') : (nowF ? 'Bookmarked' : 'Bookmark');
       $('#followBtn').classList.toggle('primary', nowF);
       toast(nowF ? 'Bookmarked' : 'Removed bookmark');
     });
@@ -1290,6 +1388,7 @@ async function renderReader(mangaId, chapterId, startPage) {
 
     const savePage = (page) => {
       setLocalProgress(mangaId, { chapter_id: cid, page, chapter_label: chapterLabel });
+      if (currentUser) api(`/api/progress/${mangaId}`, { method: 'POST', body: JSON.stringify({ chapterId: cid, page, chapterLabel }) }).catch(() => {});
     };
     savePage(startPage);
 
@@ -1538,10 +1637,20 @@ async function fillSimilar(manga, mature) {
   }
 }
 
-// ---------- library (this browser's bookmarks) ----------
+// ---------- library (synced when signed in) ----------
 async function renderLibrary() {
+  if (!currentUser) {
+    view.innerHTML = `<div class="centered">
+      <h3>Sign in to use your library</h3>
+      <p class="small">Bookmark comics to keep them here on any device.</p>
+      <button class="btn primary" id="libLogin">Log in / Sign up</button>
+    </div>`;
+    $('#libLogin').addEventListener('click', () => openAuthModal(false));
+    return;
+  }
   view.innerHTML = `<div class="page-title">My Library</div><div class="grid">${spinner().repeat(8)}</div>`;
-  const mangaIds = [...localBookmarks()];
+  let mangaIds = [...localBookmarks()];
+  try { ({ mangaIds } = await api('/api/library')); } catch {}
   if (!mangaIds.length) {
     view.innerHTML = `<div class="centered">Your library is empty. Bookmark comics you want to keep reading &mdash; use the &#128279; icon on any card or the &ldquo;Bookmark&rdquo; button on a title page.</div>`;
     return;
@@ -1554,6 +1663,124 @@ async function renderLibrary() {
   } catch (e) {
     view.innerHTML = `<div class="centered">Could not load library: ${esc(e.message)}</div>`;
   }
+}
+
+// ---------- account settings ----------
+async function renderAccount() {
+  if (!currentUser) { openAuthModal(false); location.hash = '#/'; return; }
+  view.innerHTML = `<div class="page-title">Account settings</div><div class="centered">${spinner()}</div>`;
+  let stats = { library: 0, chapters: 0 };
+  try { ({ stats } = await api('/api/auth/stats')); } catch {}
+  if (!currentUser) { location.hash = '#/'; return; }
+  const u = currentUser;
+  const joined = u.created_at ? new Date(u.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+  view.innerHTML = `
+    <div class="page-title">Account settings</div>
+    <div class="acct-wrap">
+      <div class="acct-card acct-row">
+        <img class="avatar big" src="${avatarUrl(u)}" alt="" />
+        <div style="flex:1;min-width:0">
+          <div class="acct-name">${esc(u.display_name || u.email)}</div>
+          <div class="small">${esc(u.email)}${joined ? ` &middot; joined ${esc(joined)}` : ''}</div>
+        </div>
+      </div>
+      <div class="acct-stats">
+        <div class="stat-chip"><b>${stats.library}</b><span>bookmarked</span></div>
+        <div class="stat-chip"><b>${stats.chapters}</b><span>chapters read</span></div>
+      </div>
+      <div class="acct-card">
+        <h3>Profile</h3>
+        <div class="field"><label>Username (unique, 2–24 characters)</label><input id="acctName" maxlength="24" value="${esc(u.display_name || '')}" /></div>
+        <div class="error" id="acctNameErr"></div>
+        <button class="btn primary" id="acctNameSave">Save username</button>
+      </div>
+      <div class="acct-card">
+        <h3>Password</h3>
+        <div class="field"><label>Current password</label><input id="acctCurPass" type="password" /></div>
+        <div class="field"><label>New password (at least 6 characters)</label><input id="acctNewPass" type="password" /></div>
+        <div class="error" id="acctPassErr"></div>
+        <button class="btn primary" id="acctPassSave">Change password</button>
+      </div>
+      <div class="acct-card">
+        <h3>Sessions</h3>
+        <p class="small" style="margin:0 0 10px">Signed in on another device? Kick them all off except this one.</p>
+        <div class="acct-row">
+          <button class="btn ghost" id="acctKick">Sign out everywhere else</button>
+          <button class="btn ghost" id="acctLogout">Log out</button>
+        </div>
+      </div>
+      <div class="acct-card danger">
+        <h3>Delete account</h3>
+        <p class="small" style="margin:0 0 10px">Wipes your library, reading progress and everything else tied to this account. This cannot be undone.</p>
+        <div class="acct-row" id="delArmRow"><button class="btn danger" id="acctDel">Delete my account</button></div>
+        <div id="delConfirm" hidden>
+          <div class="field"><label>Type DELETE to confirm</label><input id="acctDelText" placeholder="DELETE" /></div>
+          <div class="error" id="acctDelErr"></div>
+          <button class="btn danger" id="acctDelYes">Yes, delete everything</button>
+        </div>
+      </div>
+    </div>`;
+  $('#acctNameSave').addEventListener('click', async () => {
+    const errEl = $('#acctNameErr');
+    errEl.textContent = '';
+    try {
+      const j = await api('/api/auth/account', {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName: $('#acctName').value }),
+      });
+      currentUser = j.user;
+      refreshAuth();
+      toast('Username updated');
+      route();
+    } catch (e) { errEl.textContent = e.message; }
+  });
+  $('#acctPassSave').addEventListener('click', async () => {
+    const errEl = $('#acctPassErr');
+    errEl.textContent = '';
+    try {
+      await api('/api/auth/account', {
+        method: 'PATCH',
+        body: JSON.stringify({ currentPassword: $('#acctCurPass').value, newPassword: $('#acctNewPass').value }),
+      });
+      $('#acctCurPass').value = '';
+      $('#acctNewPass').value = '';
+      toast('Password changed');
+    } catch (e) { errEl.textContent = e.message; }
+  });
+  $('#acctKick').addEventListener('click', async () => {
+    try {
+      await api('/api/auth/sessions/clear', { method: 'POST' });
+      toast('Other devices signed out');
+    } catch (e) { toast(e.message); }
+  });
+  $('#acctLogout').addEventListener('click', async () => {
+    await doLogout();
+    location.hash = '#/';
+  });
+  $('#acctDel').addEventListener('click', () => {
+    $('#delArmRow').hidden = true;
+    $('#delConfirm').hidden = false;
+  });
+  $('#acctDelYes').addEventListener('click', async () => {
+    const errEl = $('#acctDelErr');
+    errEl.textContent = '';
+    if ($('#acctDelText').value.trim() !== 'DELETE') { errEl.textContent = 'Type DELETE exactly to confirm'; return; }
+    try {
+      await api('/api/auth/account', {
+        method: 'DELETE',
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      setToken(null);
+      try {
+        localStorage.removeItem('mgs_bookmarks');
+        localStorage.removeItem('mgs_local_progress');
+      } catch {}
+      currentUser = null;
+      refreshAuth();
+      toast('Account deleted');
+      location.hash = '#/';
+    } catch (e) { errEl.textContent = e.message; }
+  });
 }
 
 // ---------- popular (top 10 most-followed on MangaDex) ----------

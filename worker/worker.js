@@ -108,15 +108,64 @@ async function mdexListSection(extraParams, mature) {
 const atHomeCache = new Map();
 const ATHOME_TTL = 10 * 60 * 1000;
 
+// ---------- Static accounts (Cloudflare D1, free tier) ----------
+// Needs a D1 database bound as DB (see worker/schema.sql for tables).
+const enc = new TextEncoder();
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+const unhex = (s) => Uint8Array.from(s.match(/../g).map((h) => parseInt(h, 16)));
+async function hashPassword(pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, key, 256);
+  return `${hex(salt)}$${hex(bits)}`;
+}
+async function verifyPassword(pw, stored) {
+  try {
+    const [saltHex, hashHex] = String(stored).split('$');
+    const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unhex(saltHex), iterations: 100000, hash: 'SHA-256' }, key, 256);
+    return hex(bits) === hashHex;
+  } catch { return false; }
+}
+const userPublic = (u) => u && { id: u.id, email: u.email, display_name: u.display_name, avatar: u.avatar, created_at: u.created_at };
+async function authUser(req, env) {
+  if (!env.DB) return null;
+  const h = req.headers.get('Authorization') || '';
+  const m = h.match(/^Bearer (.+)$/);
+  if (!m) return null;
+  const s = await env.DB.prepare('SELECT * FROM sessions WHERE token = ?').bind(m[1]).first();
+  if (!s || new Date(s.expires) < new Date()) return null;
+  return env.DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(s.user_id).first();
+}
+async function readJson(req) {
+  try { return await req.json(); } catch { return {}; }
+}
+// Best-effort per-isolate rate limiting for auth endpoints
+const buckets = new Map();
+function limited(ip, key, max, windowMs) {
+  const k = `${ip}|${key}`;
+  const now = Date.now();
+  let b = buckets.get(k);
+  if (!b || now > b.reset) b = { n: 0, reset: now + windowMs };
+  b.n += 1;
+  buckets.set(k, b);
+  return b.n > max;
+}
+
 export default {
-  async fetch(req) {
+  async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    if (req.method !== 'GET') return err('Method not allowed', 405);
     const url = new URL(req.url);
     const q = url.searchParams;
     const mature = q.get('mature') === '1';
+    const p = url.pathname;
+    // ---- Account / library / progress API (D1) ----
+    if (p.startsWith('/auth/') || p.startsWith('/library') || p.startsWith('/progress')) {
+      if (!env.DB) return err('Accounts database not connected', 503);
+      return handleAccount(req, env, p, q);
+    }
+    if (req.method !== 'GET') return err('Method not allowed', 405);
     try {
-      const p = url.pathname;
       // Search
       if (p === '/search') {
         const params = new URLSearchParams({ 'order[relevance]': 'desc', limit: '24', offset: q.get('offset') || '0' });
@@ -286,3 +335,169 @@ export default {
     }
   },
 };
+
+// ---------- Account / library / progress handlers (D1) ----------
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function handleAccount(req, env, p, q) {
+  const DB = env.DB;
+  const ip = req.headers.get('CF-Connecting-IP') || 'x';
+  const me = await authUser(req, env);
+  const needAuth = () => { if (!me) throw Object.assign(new Error('Not logged in'), { status: 401 }); };
+  try {
+    // Public generated avatar (no login needed)
+    let m = p.match(/^\/auth\/avatar\/(\d+)\.svg$/);
+    if (m && req.method === 'GET') {
+      const u = await DB.prepare('SELECT id, display_name FROM users WHERE id = ?').bind(m[1]).first();
+      const name = (u && u.display_name) || '?';
+      const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+      let h = 0;
+      for (const c of `user-${m[1]}`) h = (h * 31 + c.charCodeAt(0)) % 360;
+      const safe = initials.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return new Response(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="hsl(${h},55%,38%)"/><text x="48" y="62" font-family="sans-serif" font-size="38" font-weight="bold" fill="#fff" text-anchor="middle">${safe}</text></svg>`,
+        { headers: { ...CORS, 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=3600' } },
+      );
+    }
+    // Signup
+    if (p === '/auth/signup' && req.method === 'POST') {
+      if (limited(ip, 'signup', 30, 3600000)) return err('Too many attempts — try again later', 429);
+      const { email, password, displayName } = await readJson(req);
+      if (!email || !password || !EMAIL_RE.test(email)) return err('A valid email and password are required', 400);
+      if (String(password).length < 6) return err('Password must be at least 6 characters', 400);
+      const em = String(email).toLowerCase();
+      if (await DB.prepare('SELECT 1 FROM users WHERE email = ?').bind(em).first()) {
+        return err('An account with that email already exists', 409);
+      }
+      const name = String(displayName || '').trim();
+      if (name) {
+        if (name.length < 2 || name.length > 24) return err('Username must be 2–24 characters', 400);
+        if (await DB.prepare('SELECT 1 FROM users WHERE display_name = ? COLLATE NOCASE').bind(name).first()) {
+          return err('That username is taken', 409);
+        }
+      }
+      const r = await DB.prepare('INSERT INTO users (email, password, display_name) VALUES (?, ?, ?)')
+        .bind(em, await hashPassword(String(password)), name || em).run();
+      const id = r.meta.last_row_id;
+      const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '');
+      const exp = new Date(Date.now() + 30 * 864e5).toISOString();
+      await DB.prepare('INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)').bind(token, id, exp).run();
+      const user = await DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(id).first();
+      return json({ user: userPublic(user), token });
+    }
+    // Login
+    if (p === '/auth/login' && req.method === 'POST') {
+      if (limited(ip, 'login', 10, 600000)) return err('Too many attempts — try again later', 429);
+      const { email, password } = await readJson(req);
+      const u = await DB.prepare('SELECT * FROM users WHERE email = ?').bind(String(email || '').toLowerCase()).first();
+      if (!u || !u.password || !(await verifyPassword(String(password || ''), u.password))) {
+        return err('Invalid email or password', 401);
+      }
+      const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '');
+      const exp = new Date(Date.now() + 30 * 864e5).toISOString();
+      await DB.prepare('INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)').bind(token, u.id, exp).run();
+      const user = await DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(u.id).first();
+      return json({ user: userPublic(user), token });
+    }
+    // Logout
+    if (p === '/auth/logout' && req.method === 'POST') {
+      const h = req.headers.get('Authorization') || '';
+      const t = (h.match(/^Bearer (.+)$/) || [])[1];
+      if (t) await DB.prepare('DELETE FROM sessions WHERE token = ?').bind(t).run();
+      return json({ ok: true });
+    }
+    // Me
+    if (p === '/auth/me' && req.method === 'GET') return json({ user: userPublic(me) });
+    // Stats
+    if (p === '/auth/stats' && req.method === 'GET') {
+      needAuth();
+      const lib = await DB.prepare('SELECT COUNT(*) AS n FROM follows WHERE user_id = ?').bind(me.id).first();
+      const ch = await DB.prepare('SELECT COUNT(*) AS n FROM progress WHERE user_id = ?').bind(me.id).first();
+      return json({ stats: { library: lib.n, chapters: ch.n } });
+    }
+    // Rename / password change
+    if (p === '/auth/account' && req.method === 'PATCH') {
+      needAuth();
+      const { displayName, currentPassword, newPassword } = await readJson(req);
+      if (displayName !== undefined) {
+        const name = String(displayName).trim();
+        if (name.length < 2 || name.length > 24) return err('Username must be 2–24 characters', 400);
+        const clash = await DB.prepare('SELECT 1 FROM users WHERE display_name = ? COLLATE NOCASE AND id != ?').bind(name, me.id).first();
+        if (clash) return err('That username is taken', 409);
+        await DB.prepare('UPDATE users SET display_name = ? WHERE id = ?').bind(name, me.id).run();
+      }
+      if (newPassword !== undefined) {
+        const full = await DB.prepare('SELECT * FROM users WHERE id = ?').bind(me.id).first();
+        if (full && full.password && !(await verifyPassword(String(currentPassword || ''), full.password))) {
+          return err('Current password is wrong', 401);
+        }
+        if (String(newPassword).length < 6) return err('New password must be at least 6 characters', 400);
+        await DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(await hashPassword(String(newPassword)), me.id).run();
+      }
+      const user = await DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(me.id).first();
+      return json({ user: userPublic(user) });
+    }
+    // Sign out everywhere else
+    if (p === '/auth/sessions/clear' && req.method === 'POST') {
+      needAuth();
+      const h = req.headers.get('Authorization') || '';
+      const t = (h.match(/^Bearer (.+)$/) || [])[1];
+      if (t) await DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').bind(me.id, t).run();
+      else await DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(me.id).run();
+      return json({ ok: true });
+    }
+    // Delete account + wipe everything
+    if (p === '/auth/account' && req.method === 'DELETE') {
+      needAuth();
+      const { confirm } = await readJson(req);
+      if (confirm !== 'DELETE') return err('Type DELETE to confirm', 400);
+      await DB.prepare('DELETE FROM users WHERE id = ?').bind(me.id).run();
+      return json({ ok: true });
+    }
+    // Library
+    if (p === '/library' && req.method === 'GET') {
+      needAuth();
+      const rows = await DB.prepare('SELECT manga_id FROM follows WHERE user_id = ? ORDER BY added_at DESC').bind(me.id).all();
+      return json({ mangaIds: rows.results.map((r) => r.manga_id) });
+    }
+    m = p.match(/^\/library\/(.+)\/status$/);
+    if (m && req.method === 'GET') {
+      needAuth();
+      const r = await DB.prepare('SELECT 1 AS x FROM follows WHERE user_id = ? AND manga_id = ?').bind(me.id, m[1]).first();
+      return json({ followed: !!r });
+    }
+    m = p.match(/^\/library\/(.+)$/);
+    if (m && (req.method === 'POST' || req.method === 'DELETE')) {
+      needAuth();
+      const id = decodeURIComponent(m[1]);
+      if (req.method === 'POST') await DB.prepare('INSERT OR IGNORE INTO follows (user_id, manga_id) VALUES (?, ?)').bind(me.id, id).run();
+      else await DB.prepare('DELETE FROM follows WHERE user_id = ? AND manga_id = ?').bind(me.id, id).run();
+      return json({ ok: true });
+    }
+    // Progress
+    if (p === '/progress' && req.method === 'GET') {
+      needAuth();
+      const rows = await DB.prepare('SELECT manga_id, chapter_id, page, chapter_label, updated_at FROM progress WHERE user_id = ? ORDER BY updated_at DESC').bind(me.id).all();
+      return json({ items: rows.results });
+    }
+    m = p.match(/^\/progress\/(.+)$/);
+    if (m && req.method === 'GET') {
+      needAuth();
+      const r = await DB.prepare('SELECT chapter_id, page, chapter_label FROM progress WHERE user_id = ? AND manga_id = ?').bind(me.id, decodeURIComponent(m[1])).first();
+      return json(r || null);
+    }
+    if (m && req.method === 'POST') {
+      needAuth();
+      const { chapterId, page, chapterLabel } = await readJson(req);
+      if (!chapterId || typeof page !== 'number' || page < 0) return err('chapterId (string) and page (number) are required', 400);
+      const id = decodeURIComponent(m[1]);
+      await DB.prepare(`INSERT INTO progress (user_id, manga_id, chapter_id, page, chapter_label, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(user_id, manga_id) DO UPDATE SET chapter_id=excluded.chapter_id, page=excluded.page, chapter_label=excluded.chapter_label, updated_at=datetime('now')`)
+        .bind(me.id, id, chapterId, page, chapterLabel || null).run();
+      return json({ ok: true });
+    }
+    return err('Not found', 404);
+  } catch (e) {
+    return err(e.message || 'Request failed', e.status || 500);
+  }
+}
