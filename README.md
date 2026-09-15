@@ -1,17 +1,20 @@
 # MyGhoulScans
 
-Ad-free manhwa/manga/manhua reader powered by the [MangaDex](https://mangadex.org) public API.
-Free to use, no ads, with accounts, a personal library, reading progress, and resume support.
+Ad-free manhwa/manga/manhua reader powered by the [comick-source-api](https://github.com/GooglyBlox/comick-source-api)
+scraper API (search + chapter lists across 60+ scanlator/aggregator sources, with page images
+scraped from source sites). Free to use, no ads, with accounts, a personal library, reading progress, and resume support.
 
 ## Features
 
-- Browse trending titles and search the full MangaDex catalog (manhwa, manga, manhua)
-- Status badges: Ongoing, Completed, Hiatus, Cancelled/Stopped
+- Pick a comic source (MangaRead, FlameComics, 60+ more) and search it, browse latest updates
+- Browse by genre, plus Manga / Manhwa / Manhua rows
+- Mature-content toggle (inferred from genre tags — sources don't label maturity)
+- Status badges: Ongoing, Completed
 - Read chapters in a clean paged reader (arrow keys / buttons to change chapters)
 - Accounts (email/password or Google) so your data follows you
 - "My Library" — save titles and jump straight back to where you left off
 - Reading progress is saved automatically and resume buttons appear on title pages
-- 18+ toggle for mature content
+- Continue Reading is sign-in-only: guests are never tracked
 
 ## Requirements
 
@@ -48,14 +51,39 @@ node test-e2e.js
 
 ## How it works
 
-- `server.js` – Express app, auth, library/progress API, and a thin proxy for the MangaDex API
+- `server.js` – Express app, auth, library/progress API, and a Comick adapter
+  (upstream search/chapters proxy + direct title/page/latest scrapers)
 - `db.js` – SQLite schema + queries (users, sessions, follows, progress)
 - `public/` – single-page frontend (vanilla JS, no build step)
 
-Content is streamed directly from MangaDex's public API/CDN. Data (users, library, progress)
-is stored locally in `data/myghoulscans.db`.
+Set `COMICK_API_BASE` to a self-hosted copy of
+[comick-source-api](https://github.com/GooglyBlox/comick-source-api) if the public
+instance (`https://comick-source-api.notaspider.dev`) is slow or blocked.
+Content is streamed from source sites through our `/api/img` proxy. Data (users, library, progress)
+is stored locally in `data/myghoulscans.db`. Note: library/progress IDs from the old
+MangaDex version (`uuid` style) no longer resolve and are skipped — re-bookmark titles
+to get the new `cx:…` IDs.
 
 ## Deploy
+
+### Publish your changes (repo root = this folder)
+
+The GitHub repo `Ghoulforlife/MyGhoulScans` mirrors **this folder** (`Website/myghoulscans/`
+locally — not its parent, not `imporved/`). From a terminal inside this folder:
+
+```bash
+git init -b main
+git add -A
+git commit -m "MyGhoulScans on Comick sources"
+git remote add origin https://github.com/Ghoulforlife/MyGhoulScans.git
+git push -u origin main
+```
+
+(`data/`, `node_modules/` and `.env` are gitignored — user accounts never get pushed.
+First push may need `git pull --rebase origin main` if the repo has commits.)
+Render and Cloudflare both redeploy automatically on `git push`.
+
+### Full app (Node server)
 
 GitHub Pages cannot host this app (it needs `node server.js` running). Two good free options:
 
@@ -92,18 +120,24 @@ Moving servers later: copy the `data/` folder over and everything
 
 ## Static build (GitHub Pages, no server)
 
-The full app above needs Node running. For a free server-less mirror, use the
-static build instead:
+The full app above needs Node running. For a free server-less mirror, the
+frontend is rebuilt as one file and the API moves to a Cloudflare Worker:
 
-- **`website-standalone/index.html`** (ask for a fresh copy) — the entire site
-  in ONE file. Upload just this file to your repo root as `index.html`,
-  enable Pages, done. No folders, no paths to get wrong.
-- Or push the repo and serve **`docs/`** (Pages → Deploy from branch → `/docs`).
+```bash
+# 1. Worker API (free tier) — needs a D1 database bound as DB:
+npx wrangler login
+npx wrangler d1 create myghoulscans
+# paste the database_id into worker/wrangler.toml, then run worker/schema.sql
+# once on that database (Cloudflare dashboard → D1 → Console), then:
+npx wrangler deploy
 
-Both need one thing to show comics: a free Cloudflare Worker proxy
-(`worker/worker.js`), because browsers are blocked from calling MangaDex
-directly. Deploy it (`npx wrangler deploy`), then replace
-`REPLACE-WITH-YOUR-WORKER` at the top of the JS with your worker address.
+# 2. Static frontend (repo root index.html — this is what Pages serves):
+node scripts/build-standalone.mjs https://<your-worker>.workers.dev
+node scripts/test-worker.mjs https://<your-worker>.workers.dev
+git add -A && git commit -m "static build" && git push
+```
 
-Static trade-offs: bookmarks, continue-reading and settings live in each
-browser only. No accounts/sync, comments, likes, or Originals uploads.
+`npm run build:static` uses the default worker URL already baked in. The static
+build keeps accounts, library, progress, comments and recs (stored in D1).
+Not supported there: Originals publishing, custom profile pictures and Google
+sign-in (all need the full server — the UI hides or explains this).

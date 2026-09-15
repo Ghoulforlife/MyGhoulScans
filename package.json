@@ -6,7 +6,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build:static": "node scripts/build-standalone.mjs",
+    "test:e2e": "node test-e2e.js",
+    "test:worker": "node scripts/test-worker.mjs"
   },
   "engines": {
     "node": ">=22.5.0"

@@ -277,6 +277,31 @@ function listProgress(userId) {
   return db.prepare('SELECT manga_id, chapter_id, page, chapter_label FROM progress WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
 }
 
+function deleteProgress(userId, mangaId) {
+  db.prepare('DELETE FROM progress WHERE user_id = ? AND manga_id = ?').run(userId, mangaId);
+}
+
+function clearProgress(userId) {
+  db.prepare('DELETE FROM progress WHERE user_id = ?').run(userId);
+}
+
+function clearFollows(userId) {
+  db.prepare('DELETE FROM follows WHERE user_id = ?').run(userId);
+}
+
+function clearUserReads(userId) {
+  db.prepare('DELETE FROM reads WHERE user_id = ?').run(userId);
+}
+
+// Wipe everything this user owns on this device-tracked level:
+// library + reading history + own read-counter rows. Comments/recs/
+// originals are left alone (use Delete Account for a full wipe).
+function clearUserContent(userId) {
+  clearProgress(userId);
+  clearFollows(userId);
+  clearUserReads(userId);
+}
+
 // ---------- Comments ----------
 const COMMENTS_BLOCK_AT = 5;  // dislikes before a comment is blocked (hidden)
 const COMMENTS_PIN_AT = 10;   // likes before a comment is auto-pinned
@@ -471,6 +496,11 @@ module.exports = {
   saveProgress,
   getProgress,
   listProgress,
+  deleteProgress,
+  clearProgress,
+  clearFollows,
+  clearUserReads,
+  clearUserContent,
   addComment,
   getComment,
   deleteComment,

@@ -13,6 +13,8 @@ services:
     envVars:
       - key: COOKIE_SECURE
         value: 1
+      - key: COMICK_API_BASE
+        value: https://comick-source-api.notaspider.dev
     disk:
       name: myghoulscans-data
       mountPath: /opt/render/project/src/data

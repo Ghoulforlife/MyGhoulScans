@@ -50,27 +50,25 @@ function statusBadge(status) {
 }
 
 function titleOf(data) {
-  const a = data.attributes && data.attributes.title;
-  if (!a) return 'Untitled';
-  // MangaDex often has no title.en (or a romanized/pinyin one); altTitles.en
-  // usually carries the common English name for manhwa/manhua/manga.
-  const altEn = (data.attributes.altTitles || []).map((t) => t.en).filter(Boolean);
-  const en = a.en || '';
-  const bestAlt = altEn.find((t) => t !== en) || altEn[0] || '';
-  if (en) return bestAlt || en;
-  return bestAlt || a['ja'] || a.ko || a['zh-hk'] || a['zh'] || Object.values(a)[0] || 'Untitled';
+  return (data && data.title) || 'Untitled';
 }
 
 function coverUrl(data) {
-  const rel = (data.relationships || []).find((r) => r.type === 'cover_art');
-  const fn = rel && rel.attributes && rel.attributes.fileName;
-  if (!fn) return '';
-  return `https://uploads.mangadex.org/covers/${data.id}/${fn}.512.jpg`;
+  return (data && data.cover) || '';
 }
 
-function yearOf(data) {
-  const y = data.attributes && data.attributes.year;
-  return y ? String(y) : '';
+// Covers live on source CDNs (hotlink protection varies), so route them
+// through our image proxy like chapter pages.
+function proxiedCover(data) {
+  const c = coverUrl(data);
+  return c ? `/api/img?u=${encodeURIComponent(c)}` : '';
+}
+
+function latestLabelOf(data) {
+  if (!data) return '';
+  if (data.latestChapterLabel) return String(data.latestChapterLabel).replace(/^chapter\s+/i, '');
+  if (data.latestChapter) return String(data.latestChapter);
+  return '';
 }
 
 // Profile picture: custom upload, or a generated initial icon (unique hue per user)
@@ -80,17 +78,11 @@ function avatarUrl(u) {
   return `/api/avatar/${u.id}.svg`;
 }
 
-function altOf(data) {
-  const a = data.attributes && (data.attributes.altTitles || []);
-  for (const t of a) if (t.en) return t.en;
-  return '';
-}
-
 function mangaCard(data, opts = {}) {
-  const img = coverUrl(data);
-  const status = data.attributes && data.attributes.status;
+  const img = proxiedCover(data);
+  const status = data.status || '';
   const bookmarked = localBookmarks().has(data.id);
-  const ch = data._chapters;
+  const lbl = latestLabelOf(data);
   return `
     <div class="manga-card ${opts.h ? 'h' : ''}" data-id="${esc(data.id)}">
       ${img ? `<img class="cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="cover"></div>'}
@@ -99,8 +91,8 @@ function mangaCard(data, opts = {}) {
       <button class="bmark ${bookmarked ? 'on' : ''}" data-id="${esc(data.id)}" data-bmark="${bookmarked ? '1' : '0'}" title="${bookmarked ? 'Bookmarked' : 'Bookmark this comic'}">${bookmarked ? '&#128278;' : '&#128279;'}</button>
       <div class="meta">
         <div class="title">${esc(titleOf(data))}</div>
-        <div class="sub">${statusBadge(status)}<span>${esc(yearOf(data))}</span></div>
-        ${ch ? `<div class="chapters">${ch.toLocaleString()} chapters</div>` : ''}
+        <div class="sub">${status ? statusBadge(status) : ''}<span>${esc(data.source || '')}</span></div>
+        ${lbl ? `<div class="chapters">Ch. ${esc(lbl)}</div>` : ''}
       </div>
     </div>`;
 }
@@ -124,8 +116,14 @@ async function refreshAuth() {
 async function doLogout() {
   await fetch('/api/auth/logout', { method: 'POST' });
   currentUser = null;
+  // Prevent ghost data: a logout must not leave the previous account's
+  // bookmarks / Continue Reading behind for the next person on this browser.
+  try {
+    localStorage.removeItem(BM_KEY);
+    localStorage.removeItem(LOCAL_PROG_KEY);
+  } catch {}
   refreshAuth();
-  toast('Logged out');
+  toast('Logged out — local reading data cleared');
   route();
 }
 
@@ -185,7 +183,7 @@ function parseHash() {
   return { page: parts[0] || 'home', parts };
 }
 
-// Title-page hash for either source: MangaDex UUIDs and "orig:<id>" originals
+// Title-page hash for either source: Comick "cx:…" IDs and "orig:<id>" originals
 function titleHash(id) {
   const s = String(id);
   return s.startsWith('orig:') ? `#/original/${s.slice(5)}` : `#/title/${s}`;
@@ -241,23 +239,21 @@ const DEFAULT_READER = {
 };
 function readerPrefs() { const p = loadPrefs(); return { ...DEFAULT_READER, ...(p.reader || {}) }; }
 const DEFAULT_PREFS = {
-  mature: false,
-  useSaver: true,
   mode: 'dark',
-  myGenres: [],
+  mature: false,
+  source: 'mangaread',
   reader: { ...DEFAULT_READER },
-  sections: { latest: true, new: true, myGenres: true, trending: true, manga: true, manhwa: true, manhua: true, rec: true },
+  sections: { latest: true, manga: true, manhwa: true, manhua: true, popular: true },
 };
 const PREFS_KEY = 'mgs_settings';
 
 function loadPrefs() {
-  const base = { ...DEFAULT_PREFS, myGenres: [...DEFAULT_PREFS.myGenres], sections: { ...DEFAULT_PREFS.sections } };
+  const base = { ...DEFAULT_PREFS, sections: { ...DEFAULT_PREFS.sections } };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
     if (saved) {
       return {
         ...base, ...saved,
-        myGenres: Array.isArray(saved.myGenres) ? saved.myGenres : [],
         reader: { ...base.reader, ...(saved.reader || {}) },
         sections: { ...base.sections, ...(saved.sections || {}) },
       };
@@ -270,7 +266,9 @@ const applyTheme = () => {
   document.documentElement.dataset.theme = loadPrefs().mode === 'light' ? 'light' : 'dark';
 };
 
-// ---------- local progress (Continue works even without an account) ----------
+// ---------- local progress (LEGACY guest key — kept only to delete it) ----------
+// Continue Reading is sign-in-only and server-backed. Guests are never
+// tracked. These helpers exist so old browsers can purge `mgs_local_progress`.
 const LOCAL_PROG_KEY = 'mgs_local_progress';
 function localProgress() {
   try { return JSON.parse(localStorage.getItem(LOCAL_PROG_KEY) || '{}'); } catch { return {}; }
@@ -278,7 +276,14 @@ function localProgress() {
 function setLocalProgress(mangaId, obj) {
   const m = localProgress();
   m[mangaId] = { ...obj, updated_at: Date.now() };
-  localStorage.setItem(LOCAL_PROG_KEY, JSON.stringify(m));
+  try { localStorage.setItem(LOCAL_PROG_KEY, JSON.stringify(m)); } catch {}
+}
+function removeLocalProgress(mangaId) {
+  const m = localProgress();
+  if (m[mangaId]) { delete m[mangaId]; try { localStorage.setItem(LOCAL_PROG_KEY, JSON.stringify(m)); } catch {} }
+}
+function clearLocalProgress() {
+  try { localStorage.removeItem(LOCAL_PROG_KEY); } catch {}
 }
 const localProgressList = () => Object.entries(localProgress()).map(([manga_id, v]) => ({
   manga_id, chapter_id: v.chapter_id, page: v.page || 0, chapter_label: v.chapter_label || null, updated_at: v.updated_at || 0,
@@ -290,21 +295,63 @@ function localBookmarks() {
   try { return new Set(JSON.parse(localStorage.getItem(BM_KEY) || '[]')); } catch { return new Set(); }
 }
 function setLocalBookmarks(set) {
-  localStorage.setItem(BM_KEY, JSON.stringify([...set]));
+  try { localStorage.setItem(BM_KEY, JSON.stringify([...set])); } catch {}
   view.querySelectorAll('.bmark').forEach((b) => {
     const on = set.has(b.dataset.id);
     b.classList.toggle('on', on);
     b.dataset.bmark = on ? '1' : '0';
   });
 }
+function clearLocalBookmarks() {
+  try { localStorage.removeItem(BM_KEY); } catch {}
+  view.querySelectorAll('.bmark').forEach((b) => {
+    b.classList.remove('on');
+    b.dataset.bmark = '0';
+  });
+}
+// Wipe every trace this browser holds: bookmarks + Continue Reading.
+// Settings (theme/mature/genres) are kept — use Reset settings for those.
+function clearAllLocalUserData() {
+  clearLocalBookmarks();
+  clearLocalProgress();
+}
 async function syncBookmarksFromServer() {
   if (!currentUser) return;
   try {
     const { mangaIds } = await api('/api/library');
-    const set = localBookmarks();
-    mangaIds.forEach((id) => set.add(id));
-    setLocalBookmarks(set);
+    // Server is the source of truth when logged in. Replace (don't merge)
+    // so a cleared library can't resurrect from stale localStorage.
+    setLocalBookmarks(new Set(mangaIds || []));
   } catch {}
+}
+// Clear server + local together, then re-render. This is the "I still see
+// the manga I was reading" fix: clearing only one side always resurrects.
+async function clearServerHistory(mangaId) {
+  removeLocalProgress(mangaId);
+  if (currentUser) {
+    try { await api(`/api/progress/${encodeURIComponent(mangaId)}`, { method: 'DELETE' }); } catch {}
+  }
+}
+async function clearAllHistory() {
+  clearLocalProgress();
+  if (currentUser) {
+    try { await api('/api/progress', { method: 'DELETE' }); } catch (e) { toast(e.message); return false; }
+  }
+  return true;
+}
+async function clearAllLibrary() {
+  clearLocalBookmarks();
+  if (currentUser) {
+    try { await api('/api/library', { method: 'DELETE' }); } catch (e) { toast(e.message); return false; }
+  }
+  return true;
+}
+async function clearAllUserData() {
+  clearAllLocalUserData();
+  if (currentUser) {
+    try { await api('/api/me/data', { method: 'DELETE' }); } catch (e) { toast(e.message); return false; }
+  }
+  return true;
 }
 async function toggleBookmark(id) {
   // Bookmarks are a signed-in perk on every device — guests get login.
@@ -318,6 +365,26 @@ async function toggleBookmark(id) {
   return adding;
 }
 
+let comickSourcesCache = null;
+async function comickSources() {
+  if (comickSourcesCache) return comickSourcesCache;
+  try {
+    comickSourcesCache = (await api('/api/comick/sources')).data;
+  } catch { comickSourcesCache = [{ id: 'mangaread', name: 'MangaRead' }, { id: 'flamecomics', name: 'FlameComics' }]; }
+  return comickSourcesCache;
+}
+
+// Adult-content handling: sources expose no ratings, so maturity is inferred
+// from genre tags (same level MangaDex's "erotica" sat at).
+const ADULT_GENRES = new Set(['adult', 'mature', 'smut', 'hentai', 'ecchi', 'doujinshi', 'yaoi', 'yuri', 'bara']);
+const isAdultSlug = (slug) => ADULT_GENRES.has(String(slug || '').toLowerCase());
+const isAdultItem = (m) => (m && Array.isArray(m.genres) && m.genres.some((g) => ADULT_GENRES.has(String(g).toLowerCase())))
+  || (m && m.genre && ADULT_GENRES.has(String(m.genre).toLowerCase()));
+function applyMatureFilter(items) {
+  if (loadPrefs().mature) return items;
+  return (items || []).filter((m) => !isAdultItem(m));
+}
+
 function openSettings() {
   const prefs = loadPrefs();
   const s = prefs.sections;
@@ -326,7 +393,6 @@ function openSettings() {
   const sw = (id, checked, label) => `
     <label class="set-row"><span class="set-lbl">${label}</span>
     <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} hidden /><span class="switch"></span></label>`;
-  const matureOn = prefs.mature;
   $('#modal').classList.remove('hidden');
   $('#modalContent').innerHTML = `
     <h2>Settings</h2>
@@ -336,62 +402,83 @@ function openSettings() {
         <div class="set-seg">${seg('theme', [['dark', 'Dark'], ['light', 'Light']], prefs.mode)}</div>
       </div>
       <div>
-        <p class="set-h">Reader quality</p>
-        <div class="set-seg">${seg('quality', [['1', 'Fast (data-saver)'], ['0', 'Full quality']], prefs.useSaver ? '1' : '0')}</div>
-      </div>
-      <div>
         <p class="set-h">Content</p>
-        <div class="set-row ${matureOn ? 'on' : ''}" id="setMatureRow" role="button" tabindex="0" title="Show mature titles">
+        <div class="set-row ${prefs.mature ? 'on' : ''}" id="setMatureRow" role="button" tabindex="0" title="Show mature titles">
           <span class="mat-dot"></span>
           <span class="set-lbl dim">Mature content</span>
         </div>
+        <p class="small" style="margin:8px 0 0">Sources don't label maturity, so this filters titles tagged with adult genres (smut, ecchi, doujinshi…). Search stays unfiltered.</p>
       </div>
       <div>
-        <p class="set-h">My genres <span class="small">(powers your feed)</span></p>
-        <div id="genreChips" class="chips">${spinner()}</div>
+        <p class="set-h">Comic source</p>
+        <div id="sourcePick" class="chips">${spinner()}</div>
+        <p class="small" style="margin:8px 0 0">Search, Latest and new discoveries use this source.</p>
       </div>
       <div>
         <p class="set-h">Home sections</p>
-        ${sw('setSecLatest', s.latest, 'Just updated (sidebar)')}
-        ${sw('setSecTrending', s.trending, 'Trending (sidebar)')}
-        ${sw('setSecNew', s.new, 'Newly added')}
-        ${sw('setSecMyGenres', s.myGenres, 'For you (my genres)')}
+        ${sw('setSecLatest', s.latest, 'Latest updates')}
         ${sw('setSecManga', s.manga, 'Manga')}
         ${sw('setSecManhwa', s.manhwa, 'Manhwa')}
         ${sw('setSecManhua', s.manhua, 'Manhua')}
-        ${sw('setSecRec', s.rec, 'Recommended (bottom)')}
+        ${sw('setSecPopular', s.popular, 'Most read (community)')}
+      </div>
+      <div>
+        <p class="set-h">Privacy — your data on this browser</p>
+        <p class="small" style="margin:0 0 10px">Clears bookmarks + Continue Reading locally${currentUser ? ' and on your account (all devices)' : ''}. Use this if you still see manga you read earlier.</p>
+        <div class="acct-row">
+          <button class="btn ghost" id="setClearHistory">Clear reading history</button>
+          <button class="btn ghost" id="setClearLibrary">Clear library</button>
+          <button class="btn danger" id="setClearAll">Clear all my data</button>
+        </div>
       </div>
     </div>
     <button class="btn primary" id="setSave" style="width:100%;margin-top:20px">Save settings</button>
   `;
-  $('#setMatureRow').addEventListener('click', () => $('#setMatureRow').classList.toggle('on'));
-  genreOptions().then((list) => {
-    const chips = $('#genreChips');
-    if (!chips) return;
-    chips.innerHTML = list.length
-      ? list.map((t) => `<span class="chip pick ${prefs.myGenres.includes(t.id) ? 'on' : ''}" data-tag="${esc(t.id)}">${esc(t.name)}</span>`).join('')
-      : '<span class="small">Could not load genres</span>';
-    chips.querySelectorAll('.chip.pick').forEach((c) => c.addEventListener('click', () => c.classList.toggle('on')));
+  let pickedSource = prefs.source || 'mangaread';
+  comickSources().then((list) => {
+    const box = $('#sourcePick');
+    if (!box) return;
+    box.innerHTML = list.length
+      ? list.map((t) => `<span class="chip pick ${t.id === pickedSource ? 'on' : ''}" data-src="${esc(t.id)}">${esc(t.name || t.id)}</span>`).join('')
+      : '<span class="small">Could not load sources</span>';
+    box.querySelectorAll('.chip.pick').forEach((c) => c.addEventListener('click', () => {
+      box.querySelectorAll('.chip.pick').forEach((x) => x.classList.remove('on'));
+      c.classList.add('on');
+      pickedSource = c.dataset.src;
+    }));
   });
+  $('#setClearHistory')?.addEventListener('click', async () => {
+    if (!confirm('Clear your Continue Reading history on this browser' + (currentUser ? ' and your account?' : '?'))) return;
+    if (await clearAllHistory()) { toast('Reading history cleared'); closeModal(); route(); }
+  });
+  $('#setClearLibrary')?.addEventListener('click', async () => {
+    if (!confirm('Clear your library / bookmarks on this browser' + (currentUser ? ' and your account?' : '?'))) return;
+    if (await clearAllLibrary()) { toast('Library cleared'); closeModal(); route(); }
+  });
+  $('#setClearAll')?.addEventListener('click', async () => {
+    if (!confirm('Clear ALL your data (history + library) on this browser' + (currentUser ? ' and your account?' : '?'))) return;
+    if (await clearAllUserData()) { toast('All local + account data cleared'); closeModal(); route(); }
+  });
+  $('#setMatureRow')?.addEventListener('click', () => $('#setMatureRow').classList.toggle('on'));
   $('#setSave').addEventListener('click', () => {
+    const oldSource = prefs.source || 'mangaread';
     savePrefs({
-      mature: $('#setMatureRow').classList.contains('on'),
-      useSaver: (document.querySelector('input[name="quality"]:checked') || { value: '1' }).value === '1',
       mode: (document.querySelector('input[name="theme"]:checked') || { value: 'dark' }).value,
-      myGenres: [...$('#genreChips').querySelectorAll('.chip.pick.on')].map((c) => c.dataset.tag),
+      mature: $('#setMatureRow').classList.contains('on'),
+      source: pickedSource,
       reader: prefs.reader,
       sections: {
         latest: $('#setSecLatest').checked,
-        new: $('#setSecNew').checked,
-        myGenres: $('#setSecMyGenres').checked,
-        trending: $('#setSecTrending').checked,
         manga: $('#setSecManga').checked,
         manhwa: $('#setSecManhwa').checked,
         manhua: $('#setSecManhua').checked,
-        rec: $('#setSecRec').checked,
+        popular: $('#setSecPopular').checked,
       },
     });
     closeModal();
+    // A source change reshapes genres + home rows everywhere — reload so the
+    // topbar menu and all cached lists rebuild from the new source.
+    if (pickedSource !== oldSource) { location.reload(); return; }
     applyTheme();
     route();
     toast('Settings saved');
@@ -399,23 +486,14 @@ function openSettings() {
 }
 
 // ---------- home ----------
-let genreTagCache = null;
-
-async function genreOptions() {
-  if (genreTagCache) return genreTagCache;
+// Resolve stored Comick IDs to display metadata (titles/covers).
+async function resolveComickIds(ids) {
+  const clean = [...new Set((ids || []).filter((id) => String(id).startsWith('cx:')))];
+  if (!clean.length) return new Map();
   try {
-    genreTagCache = (await api('/api/mdex/tags')).data;
-  } catch { genreTagCache = []; }
-  return genreTagCache;
-}
-
-async function setupGenreSelect(selectedId) {
-  const sel = $('#genreSel');
-  if (!sel) return;
-  const list = await genreOptions();
-  sel.innerHTML = '<option value="">All genres</option>' +
-    list.map((t) => `<option value="${esc(t.id)}" ${t.id === selectedId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-  sel.onchange = () => { location.hash = sel.value ? `#/genre/${sel.value}` : '#/home'; };
+    const { data } = await api('/api/comick/resolve', { method: 'POST', body: JSON.stringify({ ids: clean.slice(0, 30) }) });
+    return new Map((data || []).map((m) => [m.id, m]));
+  } catch { return new Map(); }
 }
 
 function origCard(s) {
@@ -432,6 +510,7 @@ function origCard(s) {
 function origResumeCard(s, item) {
   return `
     <div class="resume-card" data-manga="orig:${s.id}" data-cid="${esc(item.chapter_id)}" data-page="${item.page}">
+      <button class="resume-x" data-manga="orig:${s.id}" title="Remove from history" aria-label="Remove from history">&times;</button>
       ${s.cover ? `<img class="cover" loading="lazy" src="${esc(s.cover)}" alt="" />` : '<div class="cover"></div>'}
       <div class="resume-info">
         <div class="title">${esc(s.title)}</div>
@@ -440,10 +519,10 @@ function origResumeCard(s, item) {
 }
 
 function resumeCard(m, item) {
-  const img = coverUrl(m);
-  // Comick-style: a clean tile of just the cover + title, no chapter metadata.
+  const img = proxiedCover(m);
   return `
     <div class="resume-card" data-manga="${esc(m.id)}" data-cid="${esc(item.chapter_id)}" data-page="${item.page}">
+      <button class="resume-x" data-manga="${esc(m.id)}" title="Remove from history" aria-label="Remove from history">&times;</button>
       ${img ? `<img class="cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="cover"></div>'}
       <div class="resume-info">
         <div class="title">${esc(titleOf(m))}</div>
@@ -451,23 +530,15 @@ function resumeCard(m, item) {
     </div>`;
 }
 
-const HOURS_MS = 3600 * 1000;
-
-function hasNewChapters(m, progressMap, chaptersMeta) {
-  const newest = m.attributes && m.attributes.latestUploadedChapter;
+function hasNewChapters(m, progressMap) {
   const p = progressMap && progressMap.get(m.id);
-  // newest is the UUID of the latest uploaded chapter; if the last-read chapter
-  // UUID differs, there are chapters left to read.
-  if (newest && p && p.chapter_id && String(p.chapter_id) !== String(newest)) return true;
-  const meta = chaptersMeta && chaptersMeta[m.id];
-  if (meta && meta.at) {
-    const age = Date.now() - new Date(meta.at).getTime();
-    if (age < 96 * HOURS_MS) {
-      if (!p) return true;
-      if (meta.label && String(p.chapter_label) !== String(meta.label)) return true;
-    }
-  }
-  return false;
+  const lbl = latestLabelOf(m);
+  if (!lbl) return false;
+  if (!p) return true;
+  const readNum = parseFloat(String(p.chapter_label || '').replace(/^chapter\s+/i, ''));
+  const newNum = parseFloat(String(lbl).replace(/^chapter\s+/i, ''));
+  if (!isNaN(readNum) && !isNaN(newNum)) return newNum > readNum;
+  return String(p.chapter_label) !== String(lbl);
 }
 
 function section(title, id, sub) {
@@ -526,32 +597,34 @@ function wireCards(container) {
 }
 
 // ----- Continue reading -----
+// Sign-in-gated: guests NEVER see Continue and are NEVER tracked.
+// Only after sign-in do we save/fetch reading history (server-side).
 async function fillResume(progressMap) {
   const sect = $('#continueSect');
   if (!sect) return;
-  let items = [];
-  if (currentUser) {
-    try { items = (await api('/api/progress')).items || []; } catch {}
-    items.forEach((i) => { i.updated_at = Date.parse(String(i.updated_at).replace(' ', 'T') + 'Z') || 0; });
-    if (progressMap) items.forEach((i) => progressMap.set(i.manga_id, i));
+  if (!currentUser) {
+    sect.style.display = 'none';
+    // Self-heal the ghost: drop the legacy guest-tracking key so a manga
+    // read before this change can never reappear for logged-out visitors.
+    try { localStorage.removeItem(LOCAL_PROG_KEY); } catch {}
+    return;
   }
-  // Merge locally-tracked reading (works without an account too)
-  const serverIds = new Set(items.map((i) => i.manga_id));
-  const local = localProgressList().filter((i) => !serverIds.has(i.manga_id));
-  const merged = [...local, ...items].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
-  if (progressMap) merged.forEach((i) => progressMap.set(i.manga_id, i));
-  // The Continue row is a signed-in perk on every device
-  if (!currentUser) { sect.style.display = 'none'; return; }
-  if (!merged.length) return;
-  const items12 = merged.slice(0, 12);
-  const mdexItems = items12.filter((i) => !String(i.manga_id).startsWith('orig:'));
+  let items = [];
+  try { items = (await api('/api/progress')).items || []; } catch {}
+  items.forEach((i) => { i.updated_at = Date.parse(String(i.updated_at).replace(' ', 'T') + 'Z') || 0; });
+  if (progressMap) items.forEach((i) => progressMap.set(i.manga_id, i));
+  // Server is the single source of truth now — ignore + purge any stale
+  // local copy left over from before Continue became sign-in-only.
+  try { localStorage.removeItem(LOCAL_PROG_KEY); } catch {}
+  if (!items.length) { sect.style.display = 'none'; return; }
+  const items12 = items.slice(0, 12);
+  const cxItems = items12.filter((i) => String(i.manga_id).startsWith('cx:'));
   const origItems = items12.filter((i) => String(i.manga_id).startsWith('orig:'));
   let resumeHtml = '';
   try {
-    if (mdexItems.length) {
-      const bulk = await api(`/api/mdex/bulk?ids=${mdexItems.map((i) => i.manga_id).join(',')}`);
-      const byId = new Map(bulk.data.map((m) => [m.id, m]));
-      resumeHtml += mdexItems.filter((i) => byId.has(i.manga_id)).map((i) => resumeCard(byId.get(i.manga_id), i)).join('');
+    if (cxItems.length) {
+      const byId = await resolveComickIds(cxItems.map((i) => i.manga_id));
+      resumeHtml += cxItems.filter((i) => byId.has(i.manga_id)).map((i) => resumeCard(byId.get(i.manga_id), i)).join('');
     }
   } catch {}
   for (const i of origItems) {
@@ -567,78 +640,33 @@ async function fillResume(progressMap) {
     if (!row.children.length) return;
     sect.style.display = '';
     row.querySelectorAll('.resume-card').forEach((el) => {
-      el.addEventListener('click', () => { location.hash = `#/reader/${el.dataset.manga}/${el.dataset.cid}/${el.dataset.page}`; });
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.resume-x')) return;
+        location.hash = `#/reader/${el.dataset.manga}/${encodeURIComponent(el.dataset.cid)}/${el.dataset.page}`;
+      });
+    });
+    row.querySelectorAll('.resume-x').forEach((x) => {
+      x.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const mid = x.dataset.manga;
+        await clearServerHistory(mid);
+        x.closest('.resume-card')?.remove();
+        toast('Removed from history');
+        if (!row.children.length) sect.style.display = 'none';
+      });
     });
   }
-}
-
-// ----- Latest / auto-refresh -----
-let latestPoll = null;
-let seenLatest = new Set();
-function stopLatestPoll() {
-  if (latestPoll) { clearInterval(latestPoll); latestPoll = null; }
-}
-
-function timeAgo(iso) {
-  if (!iso) return 'recently';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 0) return 'just now';
-  const m = Math.floor(ms / 60000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return d < 7 ? `${d}d ago` : new Date(iso).toLocaleDateString();
-}
-
-function latestItem(m) {
-  const img = coverUrl(m);
-  const lch = m._lbl || (m.attributes && m.attributes.lastChapter);
-  const ago = timeAgo(m.attributes && m.attributes.updatedAt);
-  return `
-    <div class="latest-item" data-id="${esc(m.id)}">
-      ${img ? `<img class="cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="cover"></div>'}
-      <div class="info">
-        <div class="title">${esc(titleOf(m))}</div>
-        <div class="meta">${lch ? `Ch. ${esc(lch)}` : 'Latest update'} &middot; ${esc(ago)}</div>
-      </div>
-    </div>`;
-}
-
-async function refreshLatest() {
-  const row = $('#latestRow');
-  if (!row) return;
-  try {
-    const mature = loadPrefs().mature ? 1 : 0;
-    const data = await api(`/api/mdex/latest?mature=${mature}`);
-    const items = data.data || [];
-    const ids = new Set(items.map((m) => m.id));
-    if (seenLatest.size && [...ids].some((id) => !seenLatest.has(id))) toast('New chapters just dropped!');
-    seenLatest = ids;
-    if (!items.length) { row.innerHTML = '<div class="centered small">Nothing here yet</div>'; return; }
-    const chMeta = data.chapters || {};
-    items.forEach((m) => {
-      const cid = m.attributes && m.attributes.latestUploadedChapter;
-      m._lbl = cid && chMeta[cid] && chMeta[cid].label ? chMeta[cid].label : null;
-    });
-    row.innerHTML = items.slice(0, 14).map(latestItem).join('');
-    row.querySelectorAll('.latest-item').forEach((el) =>
-      el.addEventListener('click', () => { location.hash = `#/title/${el.dataset.id}`; }));
-  } catch {}
-}
-
-function startLatestPoll() {
-  stopLatestPoll();
-  latestPoll = setInterval(refreshLatest, 60000);
+  const clearBtn = $('#continueClear');
+  if (clearBtn) clearBtn.addEventListener('click', async () => {
+    if (!confirm('Clear your Continue Reading history?')) return;
+    if (await clearAllHistory()) { toast('Reading history cleared'); route(); }
+  });
 }
 
 // ----- Home -----
 async function renderHome() {
-  stopLatestPoll();
   const prefs = loadPrefs();
-  const mature = prefs.mature ? 1 : 0;
   const progressMap = new Map();
-  const hasMy = prefs.myGenres.length > 0;
   const sec = prefs.sections;
 
   view.innerHTML = `
@@ -650,33 +678,31 @@ async function renderHome() {
     <div class="home-wrap">
       <div class="home-main">
         <div class="sect" id="continueSect" style="display:none">
-          <h2 class="sect-title">Continue reading</h2>
+          <h2 class="sect-title">Continue reading <button class="btn ghost" id="continueClear" style="margin-left:8px;font-size:12px;padding:4px 10px">Clear</button></h2>
           <div class="hrow-wrap">
             <button class="row-ctrl prev" data-row="resumeRow" title="Scroll left">&#10094;</button>
             <div class="hrow" id="resumeRow"></div>
             <button class="row-ctrl next" data-row="resumeRow" title="Scroll right">&#10095;</button>
           </div>
         </div>
-        ${sec.new ? section('New', 'newRow', 'freshly added') : ''}
-        ${hasMy && sec.myGenres ? section('For you', 'myRow', 'your genres') : ''}
+        ${sec.latest ? section('Latest updates', 'latestRow', (prefs.source || 'mangaread')) : ''}
         ${sec.manga ? section('Manga', 'mangaRow', 'Japanese') : ''}
         ${sec.manhwa ? section('Manhwa', 'manhwaRow', 'Korean') : ''}
         ${sec.manhua ? section('Manhua', 'manhuaRow', 'Chinese') : ''}
-        ${sec.rec ? `<div class="sect">
-          <h2 class="sect-title">Recommended for you</h2>
-          <div class="grid" id="recGrid">${spinner(8)}</div>
+        ${sec.popular ? `<div class="sect">
+          <h2 class="sect-title">Most read <span class="sect-sub">by readers like you</span></h2>
+          <div class="grid" id="popGrid">${spinner(8)}</div>
         </div>` : ''}
       </div>
       <aside class="home-side">
-        ${(sec.latest || sec.trending) ? `
-          <div class="sect side-sect" style="margin:0">
-            <div class="side-tabs" id="sideTabs">
-              ${sec.latest ? '<button class="tab-btn active" data-tab="latest">Just updated</button>' : ''}
-              ${sec.trending ? '<button class="tab-btn" data-tab="trend">Trending</button>' : ''}
-            </div>
-            ${sec.latest ? `<div class="tab-pane active" id="tab-latest"><div class="latest-list side" id="latestRow">${spinner(4)}</div></div>` : ''}
-            ${sec.trending ? `<div class="tab-pane" id="tab-trend"><div class="trend-list" id="trendList">${spinner(6)}</div></div>` : ''}
-          </div>` : ''}
+        <div class="sect side-sect" style="margin:0">
+          <div class="side-tabs">
+            <button class="tab-btn active">Discover</button>
+          </div>
+          <div class="tab-pane active">
+            <p class="small" style="padding:12px">Search any title above, or <a href="#/popular">browse the community chart</a>.</p>
+          </div>
+        </div>
       </aside>
     </div>`;
 
@@ -686,41 +712,38 @@ async function renderHome() {
     const dist = row.clientWidth - 120;
     row.scrollBy({ left: b.classList.contains('prev') ? -dist : dist, behavior: 'smooth' });
   }));
-  const sideTabs = $('#sideTabs');
-  if (sideTabs) sideTabs.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => {
-    const sect = b.closest('.side-sect');
-    sect.querySelectorAll('.tab-btn').forEach((x) => x.classList.toggle('active', x === b));
-    sect.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + b.dataset.tab));
-    if (b.dataset.tab === 'trend') fillTrendSide(mature);
-    if (b.dataset.tab === 'latest' && !$('#latestRow').querySelector('.latest-item')) refreshLatest();
-  }));
   fillResume(progressMap);
 
-  // Type rows share a dedupe set so a comic only ever appears once, in the
-  // section that best fits it (new > manga > manhwa > manhua).
+  const src = prefs.source || 'mangaread';
+  const needFilter = !loadPrefs().mature;
   const used = new Set();
-  if (sec.new) await fillRowList('newRow', `/api/mdex/new?mature=${mature}`, used, { progressMap });
-  if (sec.manga) await fillRowList('mangaRow', `/api/mdex/manga?mature=${mature}`, used, { progressMap });
-  if (sec.manhwa) await fillRowList('manhwaRow', `/api/mdex/manhwa?mature=${mature}`, used, { progressMap });
-  if (sec.manhua) await fillRowList('manhuaRow', `/api/mdex/manhua?mature=${mature}`, used, { progressMap });
-  if (hasMy && sec.myGenres) fillRow('myRow', `/api/mdex/genre?tags=${encodeURIComponent(prefs.myGenres.join(','))}&mature=${mature}`, { progressMap });
-  if (sec.rec) fillGrid('recGrid', `/api/mdex/recommended?mature=${mature}`);
-  if (sec.latest) { refreshLatest(); startLatestPoll(); }
-  if (sec.trending) fillTrendSide(mature);
+  if (sec.latest) {
+    await fillRowList('latestRow', `/api/comick/latest?source=${encodeURIComponent(src)}${needFilter ? '&enrich=1' : ''}`, used, { progressMap, filterAdult: needFilter });
+  }
+  // Manga / Manhwa / Manhua are genre listings on wp-manga sources — only
+  // rendered when the current source actually has those genre slugs.
+  let typeSlugs = new Set();
+  if (sec.manga || sec.manhwa || sec.manhua) {
+    try { typeSlugs = new Set((await comickGenres()).map((g) => g.id)); } catch {}
+  }
+  if (sec.manga && typeSlugs.has('manga')) await fillRowList('mangaRow', `/api/comick/genre?source=${encodeURIComponent(src)}&genre=manga`, used, { progressMap });
+  if (sec.manhwa && typeSlugs.has('manhwa')) await fillRowList('manhwaRow', `/api/comick/genre?source=${encodeURIComponent(src)}&genre=manhwa`, used, { progressMap });
+  if (sec.manhua && typeSlugs.has('manhua')) await fillRowList('manhuaRow', `/api/comick/genre?source=${encodeURIComponent(src)}&genre=manhua`, used, { progressMap });
+  if (sec.popular) fillPopularGrid();
 }
 
-// Horizontal row filled from an array of manga (used for the type sections so
-// they can be de-duplicated against each other).
+// Horizontal row filled from an array of comick items.
 async function fillRowList(rowId, url, used, extras = {}) {
   const row = document.getElementById(rowId);
   if (!row) return;
   try {
     const data = await api(url);
-    const items = (data.data || []).filter((m) => {
+    let items = (data.data || []).filter((m) => {
       if (used.has(m.id)) return false;
       used.add(m.id);
       return true;
     });
+    if (extras.filterAdult) items = applyMatureFilter(items);
     if (!items.length) { row.innerHTML = '<div class="centered small">Nothing here yet</div>'; return; }
     const { progressMap } = extras;
     items.forEach((m) => { if (hasNewChapters(m, progressMap)) m._new = true; });
@@ -731,95 +754,65 @@ async function fillRowList(rowId, url, used, extras = {}) {
   }
 }
 
-// Trending list — fills the "Trending" tab in the home sidebar.
-async function fillTrendSide(mature) {
-  const box = $('#trendList');
-  if (!box) return;
+// Most-read titles on the home page (community chart, top 8).
+async function fillPopularGrid() {
+  const grid = $('#popGrid');
+  if (!grid) return;
   try {
-    const data = await api(`/api/mdex/trending?mature=${mature}`);
-    const items = (data.data || []).slice(0, 12);
-    if (!items.length) { box.innerHTML = '<div class="centered small">Nothing here yet</div>'; return; }
-    box.innerHTML = items.map((m, i) => {
-      const img = coverUrl(m);
-      const follows = m.attributes && m.attributes.followedCount;
-      return `
-        <div class="trend-item" data-id="${esc(m.id)}">
-          <span class="t-rank ${i < 3 ? 'top' : ''}">${i + 1}</span>
-          ${img ? `<img class="t-cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="t-cover"></div>'}
-          <div class="t-info">
-            <div class="t-title">${esc(titleOf(m))}</div>
-            ${follows ? `<div class="t-meta">${follows.toLocaleString()} follows</div>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-    box.querySelectorAll('.trend-item').forEach((el) =>
-      el.addEventListener('click', () => { location.hash = `#/title/${el.dataset.id}`; }));
+    const { data } = await api('/api/popular');
+    const ids = (data || []).map((r) => r.id).filter((id) => String(id).startsWith('cx:')).slice(0, 8);
+    if (!ids.length) { grid.innerHTML = '<div class="centered small">No reads tracked yet. Open a chapter or two and come back!</div>'; return; }
+    const byId = await resolveComickIds(ids);
+    const items = ids.filter((id) => byId.has(id)).map((id) => byId.get(id));
+    if (!items.length) { grid.innerHTML = '<div class="centered small">No reads tracked yet.</div>'; return; }
+    grid.innerHTML = items.map((m) => mangaCard(m)).join('');
+    wireCards(grid);
   } catch (e) {
-    box.innerHTML = `<div class="centered small">Could not load: ${esc(e.message)}</div>`;
+    grid.innerHTML = `<div class="centered small">Could not load: ${esc(e.message)}</div>`;
   }
-}
-
-async function renderGenre(tagId) {
-  view.innerHTML = `
-    <div class="home-toolbar">
-      <div class="page-title" style="margin:0">Genre</div>
-      <select id="genreSel" class="genre-select"><option value="">All genres</option></select>
-    </div>
-    <div class="grid" id="genreGrid">${spinner(6)}</div>`;
-  setupGenreSelect(tagId);
-  const mature = loadPrefs().mature ? 1 : 0;
-  fillGrid('genreGrid', `/api/mdex/genre?tag=${encodeURIComponent(tagId)}&mature=${mature}`);
 }
 
 // ---------- search ----------
 async function renderSearch(term) {
-  const mature = loadPrefs().mature ? 1 : 0;
-  const optAll = '<option value="">All genres</option>';
+  const prefs = loadPrefs();
   view.innerHTML = `
     <div class="home-toolbar">
       <div class="page-title" style="margin:0">${term ? `Results for &ldquo;${esc(term)}&rdquo;` : 'Search'}</div>
-      <select id="searchGenre" class="genre-select">${optAll}</select>
+      <select id="searchSource" class="genre-select"><option value="">Loading sources...</option></select>
     </div>
     <div class="grid" id="searchGrid">${spinner().repeat(8)}</div>`;
-  const sel = $('#searchGenre');
-  genreOptions().then((list) => {
-    sel.innerHTML = optAll + list.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
-  });
-  const run = async (tag) => {
+  const sel = $('#searchSource');
+  const list = await comickSources();
+  sel.innerHTML = list.map((t) => `<option value="${esc(t.id)}" ${t.id === (prefs.source || 'mangaread') ? 'selected' : ''}>${esc(t.name || t.id)}</option>`).join('');
+  const run = async () => {
     const grid = $('#searchGrid');
+    if (!grid) return;
     grid.innerHTML = spinner().repeat(8);
     try {
-      const data = await api(`/api/mdex/search?q=${encodeURIComponent(term)}&mature=${mature}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`);
-      if (!data.data || !data.data.length) grid.innerHTML = '<div class="centered">No results. Try a different title.</div>';
+      const data = await api(`/api/comick/search?q=${encodeURIComponent(term)}&source=${encodeURIComponent(sel.value)}`);
+      if (!data.data || !data.data.length) grid.innerHTML = '<div class="centered">No results. Try a different title or source.</div>';
       else { grid.innerHTML = data.data.map(mangaCard).join(''); wireCards(grid); }
     } catch (e) {
       grid.innerHTML = `<div class="centered">Search failed: ${esc(e.message)}</div>`;
     }
   };
-  sel.addEventListener('change', () => run(sel.value));
+  sel.addEventListener('change', run);
   await run('');
-}
-
-function wireGrid(data) {
-  const grid = view.querySelector('.grid');
-  grid.innerHTML = data.data.map(mangaCard).join('');
-  if (!view.querySelector('.grid')) return;
-  wireCards(grid);
 }
 
 // ---------- title page ----------
 const MAX_CHAPTERS = 6;
 function chapterItemHtml(c, progress, counts) {
-  const num = c.attributes.chapter || '?';
-  const title = c.attributes.title || '';
-  const isCurrent = progress && c.id === progress.chapter_id;
-  const n = (counts || {})[c.id] || 0;
+  const num = (c.number || c.number === 0) ? c.number : '?';
+  const title = c.title && c.title !== `Chapter ${c.number}` ? c.title : '';
+  const isCurrent = progress && progress.chapter_id === c.url;
+  const n = (counts || {})[c.url] || 0;
   return `
-    <div class="chapter-item ${isCurrent ? 'current' : ''}" data-cid="${esc(c.id)}">
+    <div class="chapter-item ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}">
       <span class="cnum">Ch. ${esc(num)}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</span>
       ${isCurrent ? '<span class="resume-flag">Last read &middot; p.' + (progress.page + 1) + '</span>' : ''}
-      <span class="cmeta"><span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span> <span class="pg-count">${c.attributes.pages}pg</span></span>
+      <span class="cmeta"><span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span></span>
     </div>`;
 }
 function chapterListHtml(chapters, progress, counts) {
@@ -836,79 +829,55 @@ function chapterListHtml(chapters, progress, counts) {
 async function renderTitle(mangaId) {
   if (!mangaId) return renderHome();
   view.innerHTML = spinner();
-  const mature = loadPrefs().mature ? 1 : 0;
   try {
-    const info = await api(`/api/mdex/manga/${mangaId}`);
-    const feed = await api(`/api/mdex/manga/${mangaId}/feed?mature=${mature}`);
+    const encId = encodeURIComponent(mangaId);
+    const info = await api(`/api/comick/title?id=${encId}`);
+    const feed = await api(`/api/comick/chapters?id=${encId}`);
     const manga = info.data;
-    const chapters = feed.data;
+    const chapters = (feed.data || []).slice().sort((a, b) => (b.number || 0) - (a.number || 0));
     let readCounts = {};
-    try { readCounts = (await api(`/api/reads/counts?manga=${encodeURIComponent(mangaId)}`)).counts || {}; } catch {}
+    try { readCounts = (await api(`/api/reads/counts?manga=${encId}`)).counts || {}; } catch {}
 
     let followed = false;
     let progress = null;
     if (currentUser) {
-      followed = localBookmarks().has(mangaId);
-      progress = (localProgress())[mangaId] || null;
-      try { followed = (await api(`/api/library/${mangaId}/status`)).followed; } catch {}
-      try { const sp = await api(`/api/progress/${mangaId}`); if (sp && sp.chapter_id) progress = sp; } catch {}
+      try { followed = (await api(`/api/library/${encId}/status`)).followed; } catch {}
+      try { const sp = await api(`/api/progress/${encId}`); if (sp && sp.chapter_id) progress = sp; } catch {}
     }
 
-    const status = manga.attributes.status;
-    const authors = (manga.relationships || []).filter((r) => r.type === 'author').map((r) => r.attributes?.name).filter(Boolean);
-    const artists = (manga.relationships || []).filter((r) => r.type === 'artist').map((r) => r.attributes?.name).filter(Boolean);
-    const tags = (manga.attributes.tags || []).slice(0, 6).map((t) => {
-      const n = t.attributes && t.attributes.name;
-      return n ? (n.en || Object.values(n)[0]) : '';
-    }).filter(Boolean);
-
-    const continued = (manga.attributes.lastChapter && manga.attributes.lastChapter.length) || '';
+    const status = manga.status || '';
+    const tags = (manga.genres || []).slice(0, 8);
 
     view.innerHTML = `
       <div class="title-hero">
-        <img src="${coverUrl(manga)}" alt="" referrerpolicy="no-referrer" />
+        ${manga.cover ? `<img src="/api/img?u=${encodeURIComponent(manga.cover)}" alt="" referrerpolicy="no-referrer" />` : '<div class="cover"></div>'}
         <div class="title-info">
           <h1>${esc(titleOf(manga))}</h1>
-          ${altOf(manga) ? `<div class="tagline">${esc(altOf(manga))}</div>` : ''}
+          <div class="tagline">from ${esc(manga.source || 'the source')}</div>
           <div class="chips">
-            ${statusBadge(status)}
-            <span class="chip">${esc((status || '').toUpperCase())}</span>
-            <span class="chip">${esc(yearOf(manga))}${continued ? ' &ndash; ' + esc(continued) : ''}</span>
-            ${authors.length ? `<span class="chip">By ${esc(authors.join(', '))}</span>` : ''}
+            ${status ? statusBadge(status) : ''}
+            ${manga.type ? `<span class="chip">${esc(manga.type)}</span>` : ''}
+            ${(manga.genres || []).some((g) => ADULT_GENRES.has(String(g).toLowerCase())) ? '<span class="chip" style="border-color:var(--red);color:var(--red)">Mature</span>' : ''}
+            ${chapters.length ? `<span class="chip">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>` : ''}
           </div>
-          ${manga.attributes.description ? `<div class="summary">${esc(manga.attributes.description.en || '')}</div>` : ''}
+          ${manga.description ? `<div class="summary">${esc(manga.description)}</div>` : ''}
           ${tags.length ? `<div class="chips">${tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
           <div class="title-actions">
-            ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || progress.chapter_id.slice(0, 8))} &#183; p.${progress.page + 1}</button>` : ''}
+            ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || '?')} &#183; p.${progress.page + 1}</button>` : ''}
             <button class="btn ${followed ? 'primary' : ''}" id="followBtn">${currentUser ? (followed ? 'In Library' : 'Add to Library') : (followed ? 'Bookmarked' : 'Bookmark')}</button>
           </div>
-          <div class="small" style="margin-top:6px">${chapters.length} readable chapters</div>
+          <div class="small" style="margin-top:6px">${chapters.length} chapters on ${esc(manga.source || 'source')}</div>
         </div>
       </div>
       <div class="page-title" style="font-size:18px">Chapters</div>
-      ${(() => {
-        const nums = chapters.map((c) => parseFloat(c.attributes.chapter)).filter((n) => !isNaN(n));
-        const gaps = nums.length && (Math.max(...nums) - Math.min(...nums) + 1) > nums.length * 1.4;
-        return gaps
-          ? '<div class="note">Some chapter numbers are missing &mdash; this title is licensed, so those chapters live offsite and aren&rsquo;t on MangaDex. Only the readable ones are listed below.</div>'
-          : '';
-      })()}
       ${chapters.length ? chapterListHtml(chapters, progress, readCounts)
         : `<div class="centered" style="margin:32px 0">
-            <p class="small">No readable English chapters on MangaDex for this title.<br>Licensed or serialized series often host chapters only offsite.</p>
+            <p class="small">No chapters found for this title on ${esc(manga.source || 'the source')}.</p>
           </div>`}
 
       <div class="sect" id="recSect">
         <h2 class="sect-title">Recommended by readers <button class="btn ghost" id="recBtn">+ Recommend similar titles</button></h2>
         <div class="hrow" id="recRow"></div>
-      </div>
-      <div class="sect">
-        <h2 class="sect-title">More like this</h2>
-        <div class="hrow-wrap">
-          <button class="row-ctrl prev" data-row="simRow" title="Scroll left">&#10094;</button>
-          <div class="hrow" id="simRow">${spinner(4)}</div>
-          <button class="row-ctrl next" data-row="simRow" title="Scroll right">&#10095;</button>
-        </div>
       </div>`;
 
     $('#followBtn').addEventListener('click', async () => {
@@ -922,13 +891,13 @@ async function renderTitle(mangaId) {
 
     $('#resumeBtn')?.addEventListener('click', () => {
       if (!progress) return;
-      location.hash = `#/reader/${mangaId}/${progress.chapter_id}/${progress.page}`;
+      location.hash = `#/reader/${mangaId}/${encodeURIComponent(progress.chapter_id)}/${progress.page}`;
     });
 
     view.querySelector('#chapterList')?.addEventListener('click', (e) => {
       const it = e.target.closest('.chapter-item');
       if (!it) return;
-      location.hash = `#/reader/${mangaId}/${it.dataset.cid}/0`;
+      location.hash = `#/reader/${mangaId}/${encodeURIComponent(it.dataset.cid)}/0`;
     });
 
     $('#chapterExpand')?.addEventListener('click', () => {
@@ -949,7 +918,6 @@ async function renderTitle(mangaId) {
 
     $('#recBtn').addEventListener('click', () => openRecModal(mangaId));
     fillRecRow(mangaId);
-    fillSimilar(manga, mature);
   } catch (e) {
     view.innerHTML = `<div class="centered">Could not load title: ${esc(e.message)}</div>`;
   }
@@ -1054,7 +1022,7 @@ function relDate(iso) {
   return { rel, abs };
 }
 
-// Load a creator-original chapter into the same shape the MangaDex branch
+// Load a creator-original chapter into the same shape the Comick branch
 // produces, so both ride the shared reader below.
 async function loadOriginalData(mangaId, chapterId) {
   const sid = mangaId.slice(5);
@@ -1181,7 +1149,7 @@ async function renderReader(mangaId, chapterId, startPage) {
   $('#fabGear').addEventListener('click', openRS);
 
   try {
-    // Normalized chapter data — MangaDex and creator Originals share the
+    // Normalized chapter data — Comick and creator Originals share the
     // whole reader below this branch.
     // { mangaTitle, coverSrc, chapters:[{id,num,title,pub}], idx,
     //   urls, altUrls, updatedText, infoHtml, chapterId, qualityNote }
@@ -1190,27 +1158,26 @@ async function renderReader(mangaId, chapterId, startPage) {
       DATA = await loadOriginalData(mangaId, chapterId);
       if (!alive()) return;
     } else {
-    const mangaInfo = await api(`/api/mdex/manga/${mangaId}`);
-    const mangaTitle = titleOf(mangaInfo.data);
-    const feed = (await api(`/api/mdex/manga/${mangaId}/feed`)).data || [];
+    // Comick source branch: title + chapter list from our server adapter,
+    // page images scraped from the source chapter page.
+    const encId = encodeURIComponent(mangaId);
+    const titleInfo = (await api(`/api/comick/title?id=${encId}`)).data;
+    const mangaTitle = titleInfo.title || 'Untitled';
+    const feed = (await api(`/api/comick/chapters?id=${encId}`)).data || [];
     if (!alive()) return;
 
-    let idx = feed.findIndex((c) => c.id === chapterId);
+    let idx = feed.findIndex((c) => c.url === chapterId);
     if (idx === -1) idx = 0;
 
-    // Deleted/unlisted chapters still appear in the feed but 404 on at-home;
-    // a busy MangaDex can also 502/403 them. Skip forward (up to 20) to the
-    // next chapter that can actually be read, only surfacing real failures.
-    let cid = null, atHome = null;
-    const skipFail = (s) => s >= 500 || s === 404 || s === 410 || s === 403;
-    for (let i = idx; i < feed.length && i < idx + 20; i++) {
+    // A chapter page can fail to yield images (blocked/removed) — skip
+    // forward (up to 5) to the next readable chapter instead of dying.
+    let cid = null, urls = [];
+    for (let i = idx; i < feed.length && i < idx + 5; i++) {
       try {
-        const at = await api(`/api/mdex/chapter/${feed[i].id}/at-home`);
-        if (at.chapter && ((at.chapter.data || []).length || (at.chapter.dataSaver || []).length)) {
-          cid = feed[i].id; atHome = at; idx = i; break;
-        }
+        const pg = await api(`/api/comick/pages?url=${encodeURIComponent(feed[i].url)}`);
+        if (pg.data && pg.data.length) { cid = feed[i].url; urls = pg.data; idx = i; break; }
       } catch (e) {
-        if (!skipFail(e.status)) throw e; // unexpected (auth/network): surface it
+        if (e.status && e.status < 500 && e.status !== 404 && e.status !== 502) throw e;
       }
     }
     if (!alive()) return;
@@ -1223,7 +1190,7 @@ async function renderReader(mangaId, chapterId, startPage) {
         </div>
         <div class="centered" style="margin-top:80px">
           <h3>Chapter unavailable</h3>
-          <p class="small">This chapter was deleted or has no uploaded pages on MangaDex.</p>
+          <p class="small">This chapter has no readable pages on ${esc(mangaTitle)} right now.</p>
           <button class="btn primary" id="gobackBtn">Back to title</button>
         </div>`;
       $('#gobackBtn').addEventListener('click', () => { location.hash = titleHref; });
@@ -1233,56 +1200,26 @@ async function renderReader(mangaId, chapterId, startPage) {
     }
 
     // keep the URL in sync with the chapter actually rendered
-    if (cid !== chapterId) history.replaceState(null, '', `#/reader/${mangaId}/${cid}/0`);
+    if (cid !== chapterId) history.replaceState(null, '', `#/reader/${mangaId}/${encodeURIComponent(cid)}/0`);
 
-    const hash = atHome.chapter.hash;
-    const base = atHome.baseUrl;
-    const saver = atHome.chapter.dataSaver || [];
-    const full = atHome.chapter.data || [];
-    const p = (u) => `/api/img?u=${encodeURIComponent(u)}`;
-    // Preferred quality first — but if the chapter only ships the other one
-    // (e.g. no full-quality files), fall back instead of showing zero pages.
-    let useSaver = saver.length > 0 && loadPrefs().useSaver;
-    let docs = useSaver ? saver : full;
-    let sub = useSaver ? 'data-saver' : 'data';
-    let qualityNote = '';
-    if (!docs.length) {
-      docs = useSaver ? full : saver;
-      sub = useSaver ? 'data' : 'data-saver';
-      useSaver = !useSaver;
-      qualityNote = useSaver ? 'Full quality unavailable — using data-saver' : 'Data-saver unavailable — using full quality';
-    }
-    const urls = docs.map((f) => p(`${base}/${sub}/${hash}/${f}`));
-    // Fallback pool goes both directions so a retry can switch quality when
-    // one set of files is dead on the CDN.
-    const altPool = useSaver ? full : saver;
-    const altSub = useSaver ? 'data' : 'data-saver';
-    const altUrls = altPool.length ? altPool.map((f) => p(`${base}/${altSub}/${hash}/${f}`)) : [];
     const chapters = feed.map((c) => ({
-      id: c.id,
-      num: (c.attributes && c.attributes.chapter) || '',
-      title: (c.attributes && c.attributes.title) || '',
-      pub: c.attributes && (c.attributes.publishAt || c.attributes.readableAt),
+      id: c.url,
+      num: (c.number || c.number === 0) ? String(c.number) : '',
+      title: c.title && c.title !== `Chapter ${c.number}` ? c.title : '',
+      pub: null,
     }));
-    const cur = chapters[idx];
-    const { rel: relUp, abs: absUp } = relDate(cur.pub);
-    const genreNames = (mangaInfo.data.attributes.tags || [])
-      .filter((t) => t.attributes && t.attributes.group === 'genre')
-      .map((t) => t.attributes.name && t.attributes.name.en)
-      .filter(Boolean).slice(0, 4).join(', ');
+    const cur = chapters[idx] || {};
     DATA = {
       mangaTitle,
-      coverSrc: coverUrl(mangaInfo.data),
-      chapters, idx, urls, altUrls,
-      updatedText: cur.pub ? `Updated ${relUp}` : '',
+      coverSrc: titleInfo.cover ? `/api/img?u=${encodeURIComponent(titleInfo.cover)}` : '',
+      chapters, idx, urls, altUrls: [],
+      updatedText: titleInfo.source ? `via ${titleInfo.source}` : '',
       infoHtml: `You are reading <b>Chapter ${esc(cur.num || '?')} of ${esc(mangaTitle)}</b> on <b>MyGhoulScans</b>.`
-        + (genreNames ? ` This <b>${esc(genreNames)}</b> comic features <b>${urls.length} images</b>`
-          : ` This comic features <b>${urls.length} images</b>`)
-        + (absUp ? ` and was last updated on <b>${esc(absUp)}</b>` : '') + '.',
+        + ` This comic features <b>${urls.length} images</b> from <b>${esc(titleInfo.source || 'the source')}</b>.`,
       chapterId: cid,
-      qualityNote,
+      qualityNote: '',
     };
-    } // end MangaDex branch
+    } // end Comick branch
 
     const { mangaTitle, coverSrc, chapters, idx, urls, altUrls,
       updatedText, infoHtml, chapterId: cid, qualityNote } = DATA;
@@ -1303,7 +1240,7 @@ async function renderReader(mangaId, chapterId, startPage) {
     chSel.innerHTML = chapters
       .map((c) => `<option value="${esc(c.id)}" ${String(c.id) === String(cid) ? 'selected' : ''}>${esc(chLabel(c))}</option>`)
       .join('');
-    chSel.addEventListener('change', () => { location.hash = `#/reader/${mangaId}/${chSel.value}/0`; });
+    chSel.addEventListener('change', () => { location.hash = `#/reader/${mangaId}/${encodeURIComponent(chSel.value)}/0`; });
 
     const pagesEl = view.querySelector('#readerPages');
     // Lazily load pages near the viewport (eager for the first few) so a chapter
@@ -1453,8 +1390,9 @@ async function renderReader(mangaId, chapterId, startPage) {
     }, 10000);
 
     const savePage = (page) => {
-      setLocalProgress(mangaId, { chapter_id: cid, page, chapter_label: chapterLabel });
-      if (currentUser) api(`/api/progress/${mangaId}`, { method: 'POST', body: JSON.stringify({ chapterId: cid, page, chapterLabel }) }).catch(() => {});
+      // Guests are never tracked — history starts only after sign-in.
+      if (!currentUser) return;
+      api(`/api/progress/${mangaId}`, { method: 'POST', body: JSON.stringify({ chapterId: cid, page, chapterLabel }) }).catch(() => {});
     };
     savePage(startPage);
     // read counter — increments when a chapter is actually opened
@@ -1476,14 +1414,14 @@ async function renderReader(mangaId, chapterId, startPage) {
     const prev = idx > 0 ? chapters[idx - 1] : null;
     const next = idx < chapters.length - 1 ? chapters[idx + 1] : null;
     const prevBtn = $('#prevBtn'), nextBtn = $('#nextBtn');
-    if (prev) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => { location.hash = `#/reader/${mangaId}/${prev.id}/0`; }); }
+    if (prev) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => { location.hash = `#/reader/${mangaId}/${encodeURIComponent(prev.id)}/0`; }); }
     else prevBtn.disabled = true;
-    if (next) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => { location.hash = `#/reader/${mangaId}/${next.id}/0`; }); }
+    if (next) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => { location.hash = `#/reader/${mangaId}/${encodeURIComponent(next.id)}/0`; }); }
     else nextBtn.disabled = true;
 
     // bottom-of-chapter nav — this is where "next" lives on mobile
     const endNext = $('#endNextBtn'), endPrev = $('#endPrevBtn');
-    const goTo = (id) => () => { location.hash = `#/reader/${mangaId}/${id}/0`; };
+    const goTo = (id) => () => { location.hash = `#/reader/${mangaId}/${encodeURIComponent(id)}/0`; };
     const backHome = () => { location.hash = titleHref; };
     if (next) endNext.addEventListener('click', goTo(next.id));
     else {
@@ -1521,8 +1459,8 @@ async function renderReader(mangaId, chapterId, startPage) {
       updateProgress();
     };
     const goPage = (i) => {
-      if (i < 0) { if (prev) location.hash = `#/reader/${mangaId}/${prev.id}/0`; return; }
-      if (i >= urls.length) { if (next) location.hash = `#/reader/${mangaId}/${next.id}/0`; return; }
+      if (i < 0) { if (prev) location.hash = `#/reader/${mangaId}/${encodeURIComponent(prev.id)}/0`; return; }
+      if (i >= urls.length) { if (next) location.hash = `#/reader/${mangaId}/${encodeURIComponent(next.id)}/0`; return; }
       pageIdx = i;
       const im = imgs[pageIdx];
       if (im && !im.src && im.dataset.src) { im.src = im.dataset.src; stamp(im); }
@@ -1659,8 +1597,8 @@ async function renderReader(mangaId, chapterId, startPage) {
         goPage(pageIdx + step);
         return;
       }
-      if (e.key === 'ArrowLeft' && prev) { location.hash = `#/reader/${mangaId}/${prev.id}/0`; }
-      if (e.key === 'ArrowRight' && next) { location.hash = `#/reader/${mangaId}/${next.id}/0`; }
+      if (e.key === 'ArrowLeft' && prev) { location.hash = `#/reader/${mangaId}/${encodeURIComponent(prev.id)}/0`; }
+      if (e.key === 'ArrowRight' && next) { location.hash = `#/reader/${mangaId}/${encodeURIComponent(next.id)}/0`; }
     });
     readerCleanup = {
       dispose: () => {
@@ -1763,8 +1701,9 @@ function commentItem(c) {
 
 // ---------- recommendations ----------
 function recItemRow(m) {
+  const img = proxiedCover(m);
   return `<label class="rec-item">
-    ${coverUrl(m) ? `<img class="rec-cover" loading="lazy" referrerpolicy="no-referrer" src="${coverUrl(m)}" alt="" />` : '<div class="rec-cover"></div>'}
+    ${img ? `<img class="rec-cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="rec-cover"></div>'}
     <span class="rec-name">${esc(titleOf(m))}</span>
     <input type="checkbox" class="rec-check" value="${esc(m.id)}" />
   </label>`;
@@ -1790,8 +1729,9 @@ async function openRecModal(mangaId) {
     <button class="btn primary" id="recSave" style="width:100%;margin-top:14px">Save recommendations</button>
   `;
   try {
-    const bulk = await api(`/api/mdex/bulk?ids=${encodeURIComponent(clean.slice(0, 60).join(','))}`);
-    $('#recPick').innerHTML = bulk.data.map((m) => {
+    const byId = await resolveComickIds(clean.slice(0, 60));
+    const items = clean.filter((id) => byId.has(id)).map((id) => byId.get(id));
+    $('#recPick').innerHTML = items.map((m) => {
       const row = recItemRow(m);
       return row.replace('<input type="checkbox" class="rec-check"', `<input type="checkbox" class="rec-check" ${picks.has(m.id) ? 'checked' : ''}`);
     }).join('') || '<span class="small">Nothing to pick from yet.</span>';
@@ -1819,27 +1759,16 @@ async function fillRecRow(mangaId) {
       row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
       return;
     }
-    const bulk = await api(`/api/mdex/bulk?ids=${encodeURIComponent(data.map((r) => r.id).join(','))}`);
-    row.innerHTML = bulk.data.map((m) => mangaCard(m, { h: true })).join('');
-    wireCards(row);
-  } catch {
-    row.innerHTML = '<div class="centered small">Could not load recommendations</div>';
-  }
-}
-
-async function fillSimilar(manga, mature) {
-  const row = $('#simRow');
-  if (!row) return;
-  const tags = (manga.attributes.tags || []).filter((t) => t.attributes && t.attributes.group === 'genre').slice(0, 3).map((t) => t.id);
-  if (!tags.length) { row.closest('.sect').style.display = 'none'; return; }
-  try {
-    const data = await api(`/api/mdex/genre?tags=${encodeURIComponent(tags.join(','))}&mature=${mature}`);
-    const items = (data.data || []).filter((m) => m.id !== manga.id).slice(0, 10);
-    if (!items.length) { row.closest('.sect').style.display = 'none'; return; }
+    const byId = await resolveComickIds(data.map((r) => r.id));
+    const items = data.map((r) => r.id).filter((id) => byId.has(id)).map((id) => byId.get(id));
+    if (!items.length) {
+      row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
+      return;
+    }
     row.innerHTML = items.map((m) => mangaCard(m, { h: true })).join('');
     wireCards(row);
   } catch {
-    row.closest('.sect').style.display = 'none';
+    row.innerHTML = '<div class="centered small">Could not load recommendations</div>';
   }
 }
 
@@ -1855,21 +1784,26 @@ async function renderLibrary() {
     $('#libLogin').addEventListener('click', () => openAuthModal(false));
     return;
   }
-  view.innerHTML = `<div class="page-title">My Library</div><div class="grid">${spinner().repeat(8)}</div>`;
-  let mangaIds = [...localBookmarks()];
-  try { ({ mangaIds } = await api('/api/library')); } catch {}
+  view.innerHTML = `<div class="page-title">My Library <button class="btn ghost" id="libClear" style="margin-left:8px;font-size:12px;padding:4px 10px">Clear all</button></div><div class="grid">${spinner().repeat(8)}</div>`;
+  $('#libClear')?.addEventListener('click', async () => {
+    if (!confirm('Remove every title from your library (this browser + account)?')) return;
+    if (await clearAllLibrary()) { toast('Library cleared'); route(); }
+  });
+  let mangaIds = [];
+  try { ({ mangaIds } = await api('/api/library')); setLocalBookmarks(new Set(mangaIds || [])); }
+  catch { mangaIds = [...localBookmarks()]; }
   if (!mangaIds.length) {
     view.innerHTML = `<div class="centered">Your library is empty. Bookmark comics you want to keep reading &mdash; use the &#128279; icon on any card or the &ldquo;Bookmark&rdquo; button on a title page.</div>`;
     return;
   }
   try {
-    const mdexIds = mangaIds.filter((id) => !String(id).startsWith('orig:'));
+    const cxIds = mangaIds.filter((id) => String(id).startsWith('cx:'));
     const origIds = mangaIds.filter((id) => String(id).startsWith('orig:'));
     const grid = view.querySelector('.grid');
     let html = '';
-    if (mdexIds.length) {
-      const data = await api(`/api/mdex/bulk?ids=${encodeURIComponent(mdexIds.join(','))}`);
-      html += data.data.map((m) => mangaCard(m)).join('');
+    if (cxIds.length) {
+      const byId = await resolveComickIds(cxIds);
+      html += cxIds.filter((id) => byId.has(id)).map((id) => mangaCard(byId.get(id))).join('');
     }
     for (const oid of origIds) {
       try {
@@ -1998,8 +1932,6 @@ async function renderOriginalSeries(sid) {
     let followed = false;
     let progress = null;
     if (currentUser) {
-      followed = localBookmarks().has(mid);
-      progress = (localProgress())[mid] || null;
       try { followed = (await api(`/api/library/${encodeURIComponent(mid)}/status`)).followed; } catch {}
       try { const sp = await api(`/api/progress/${encodeURIComponent(mid)}`); if (sp && sp.chapter_id) progress = sp; } catch {}
     }
@@ -2100,6 +2032,15 @@ async function renderAccount() {
           <button class="btn ghost" id="acctLogout">Log out</button>
         </div>
       </div>
+      <div class="acct-card">
+        <h3>Reading data</h3>
+        <p class="small" style="margin:0 0 10px">Still seeing manga you read earlier? Clear it here — wipes this browser <b>and</b> your account (all devices). Comments and published comics are kept; use Delete below for a full wipe.</p>
+        <div class="acct-row">
+          <button class="btn ghost" id="acctClearHistory">Clear reading history</button>
+          <button class="btn ghost" id="acctClearLibrary">Clear library</button>
+          <button class="btn danger" id="acctClearAll">Clear all my data</button>
+        </div>
+      </div>
       <div class="acct-card danger">
         <h3>Delete account</h3>
         <p class="small" style="margin:0 0 10px">Wipes your library, reading progress, comments, published comics and everything else tied to this account. This cannot be undone.</p>
@@ -2181,6 +2122,18 @@ async function renderAccount() {
     await doLogout();
     location.hash = '#/';
   });
+  $('#acctClearHistory')?.addEventListener('click', async () => {
+    if (!confirm('Clear your Continue Reading history on this browser and your account?')) return;
+    if (await clearAllHistory()) { toast('Reading history cleared'); route(); }
+  });
+  $('#acctClearLibrary')?.addEventListener('click', async () => {
+    if (!confirm('Remove every title from your library on this browser and your account?')) return;
+    if (await clearAllLibrary()) { toast('Library cleared'); route(); }
+  });
+  $('#acctClearAll')?.addEventListener('click', async () => {
+    if (!confirm('Clear ALL your data (history + library) on this browser and your account?')) return;
+    if (await clearAllUserData()) { toast('All data cleared'); route(); }
+  });
   $('#acctDel').addEventListener('click', () => {
     $('#delArmRow').hidden = true;
     $('#delConfirm').hidden = false;
@@ -2217,7 +2170,7 @@ async function renderPopular() {
     const { data } = await api('/api/popular');
     if (!data.length) { list.innerHTML = '<div class="centered">No reads tracked yet. Open a chapter or two and come back!</div>'; return; }
     const ids = data.map((r) => r.id);
-    const mdexIds = ids.filter((id) => !String(id).startsWith('orig:'));
+    const cxIds = ids.filter((id) => String(id).startsWith('cx:'));
     const origById = new Map();
     for (const oid of ids.filter((id) => String(id).startsWith('orig:'))) {
       try {
@@ -2225,16 +2178,14 @@ async function renderPopular() {
         origById.set(oid, s);
       } catch {}
     }
-    const bulk = mdexIds.length
-      ? await api(`/api/mdex/bulk?ids=${encodeURIComponent(mdexIds.join(','))}`)
-      : { data: [] };
-    const byId = new Map(bulk.data.map((m) => [m.id, m]));
+    const byId = await resolveComickIds(cxIds);
     const max = data[0].n;
     list.innerHTML = data.map((row, i) => {
       const s = origById.get(row.id);
       const m = byId.get(row.id);
       if (!m && !s) return '';
-      const img = m ? coverUrl(m) : s.cover;
+      const rawImg = m ? coverUrl(m) : s.cover;
+      const img = m && rawImg ? `/api/img?u=${encodeURIComponent(rawImg)}` : rawImg;
       const name = m ? titleOf(m) : s.title;
       const w = Math.round((row.n / max) * 100);
       return `
@@ -2273,13 +2224,21 @@ $('#searchInput').addEventListener('keydown', (e) => {
 });
 $('#settingsBtn').addEventListener('click', openSettings);
 
-// ---------- genres dropdown ----------
+// ---------- genres dropdown (topbar: browse by genre on the picked source) ----------
+async function comickGenres() {
+  const source = loadPrefs().source || 'mangaread';
+  try {
+    return (await api(`/api/comick/genres?source=${encodeURIComponent(source)}`)).data;
+  } catch { return []; }
+}
 async function initGenreDropdown() {
   const btn = $('#genreDropBtn');
   const menu = $('#genreMenu');
   if (!btn || !menu) return;
+  const mature = loadPrefs().mature;
+  const list = (await comickGenres()).filter((t) => mature || !isAdultSlug(t.id));
   const tag = (t) => `<a href="#/genre/${esc(t.id)}">${esc(t.name)}</a>`;
-  menu.innerHTML = (await genreOptions()).map(tag).join('');
+  menu.innerHTML = list.length ? list.map(tag).join('') : '<span class="small" style="padding:8px">No genres</span>';
   const open = (show) => menu.classList.toggle('hidden', !show);
   btn.addEventListener('click', (e) => { e.stopPropagation(); open(menu.classList.contains('hidden')); });
   menu.addEventListener('click', (e) => {
@@ -2287,6 +2246,63 @@ async function initGenreDropdown() {
   });
   document.addEventListener('click', () => open(false));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') open(false); });
+}
+
+async function setupGenreSelect(selectedId) {
+  const sel = $('#genreSel');
+  if (!sel) return;
+  const mature = loadPrefs().mature;
+  const list = (await comickGenres()).filter((t) => mature || !isAdultSlug(t.id));
+  sel.innerHTML = '<option value="">All genres</option>' +
+    list.map((t) => `<option value="${esc(t.id)}" ${t.id === selectedId ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+  sel.onchange = () => { location.hash = sel.value ? `#/genre/${sel.value}` : '#/home'; };
+}
+
+// ---------- genre page ----------
+async function renderGenre(slug) {
+  const source = loadPrefs().source || 'mangaread';
+  if (isAdultSlug(slug) && !loadPrefs().mature) {
+    view.innerHTML = `<div class="centered">
+      <h3>This genre is marked mature</h3>
+      <p class="small">Enable mature content in Settings to browse it.</p>
+      <button class="btn primary" id="matOn">Enable mature content</button>
+    </div>`;
+    $('#matOn').addEventListener('click', () => {
+      savePrefs({ ...loadPrefs(), mature: true });
+      toast('Mature content enabled');
+      route();
+    });
+    return;
+  }
+  const list = await comickGenres();
+  const name = (list.find((t) => t.id === slug) || {}).name || slug;
+  view.innerHTML = `
+    <div class="home-toolbar">
+      <div class="page-title" style="margin:0">${esc(name)}</div>
+      <select id="genreSel" class="genre-select"><option value="">All genres</option></select>
+    </div>
+    <div class="grid" id="genreGrid">${spinner(6)}</div>
+    <div class="centered" id="genreMore" style="display:none"><button class="btn ghost" id="genreNext">More</button></div>`;
+  setupGenreSelect(slug);
+  let page = 1;
+  const load = async () => {
+    const grid = $('#genreGrid');
+    try {
+      const data = await api(`/api/comick/genre?source=${encodeURIComponent(source)}&genre=${encodeURIComponent(slug)}&page=${page}`);
+      const items = data.data || [];
+      if (page === 1 && !items.length) grid.innerHTML = '<div class="centered small">Nothing here yet</div>';
+      else {
+        if (page === 1) grid.innerHTML = '';
+        grid.innerHTML += items.map((m) => mangaCard(m)).join('');
+        wireCards(grid);
+      }
+      $('#genreMore').style.display = items.length >= 10 ? '' : 'none';
+      $('#genreNext').onclick = () => { page++; load(); };
+    } catch (e) {
+      grid.innerHTML = `<div class="centered small">Could not load: ${esc(e.message)}</div>`;
+    }
+  };
+  load();
 }
 
 // ---------- mobile menu ----------
@@ -2307,6 +2323,13 @@ async function initGenreDropdown() {
 applyTheme();
 initGenreDropdown();
 refreshAuth().then(async () => {
-  await syncBookmarksFromServer();
+  if (!currentUser) {
+    // Logged-out visitors hold no history: purge any legacy guest keys
+    // so old Continue entries can never render again on this browser.
+    try { localStorage.removeItem(LOCAL_PROG_KEY); } catch {}
+    try { localStorage.removeItem(BM_KEY); } catch {}
+  } else {
+    await syncBookmarksFromServer();
+  }
   route();
 });

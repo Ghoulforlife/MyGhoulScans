@@ -140,35 +140,41 @@ function reqBin(method, path, body, contentType, cookie) {
   const unauth = await req('GET', '/api/library');
   check('unauth library 401', unauth.status === 401);
 
-  // 8. trending
-  const tr = await req('GET', '/api/mdex/trending');
-  check('trending', tr.status === 200 && tr.body.data.length > 0, `count=${tr.body.data.length}`);
+  // 8. comick sources
+  const so = await req('GET', '/api/comick/sources');
+  check('comick sources', so.status === 200 && so.body.data.length > 5, `count=${so.body.data.length}`);
 
-  // 9. search
-  const se = await req('GET', '/api/mdex/search?q=solo%20leveling');
-  check('search', se.status === 200 && se.body.data.length > 0, `count=${se.body.data.length}`);
+  // 9. comick search
+  const se = await req('GET', '/api/comick/search?q=solo%20leveling&source=mangaread');
+  check('comick search', se.status === 200 && se.body.data.length > 0, `count=${se.body.data.length}`);
+  const cxId = se.body.data[0].id;
 
-  // 10. real manga feed (pick a trending one with chapters)
-  const tr2 = await req('GET', '/api/mdex/trending');
-  let feedOk = false, chapterId = null, pagesAtHome = 0;
-  for (const m of tr2.body.data.slice(0, 6)) {
-    const f = await req('GET', `/api/mdex/manga/${m.id}/feed`);
-    if (f.body.data && f.body.data.length > 0) {
-      chapterId = f.body.data[0].id;
-      feedOk = true;
-      const title = (m.attributes.title && m.attributes.title.en) || '(ko)';
-      console.log(`  (feed source: ${title}, chapters=${f.body.data.length})`);
-      const ah = await req('GET', `/api/mdex/chapter/${chapterId}/at-home`);
-      pagesAtHome = ah.body.chapter && ah.body.chapter.data ? ah.body.chapter.data.length : 0;
-      break;
-    }
+  // 10. comick title + chapters + pages (real scrape)
+  const ti = await req('GET', `/api/comick/title?id=${encodeURIComponent(cxId)}`);
+  check('comick title', ti.status === 200 && ti.body.data.title, ti.body.data.title);
+  const chRes = await req('GET', `/api/comick/chapters?id=${encodeURIComponent(cxId)}`);
+  const chaptersOk = chRes.status === 200 && chRes.body.data && chRes.body.data.length > 0;
+  check('comick chapters', chaptersOk, `total=${chRes.body.total}`);
+  let pagesOk = false, pagesN = 0;
+  if (chaptersOk) {
+    const first = chRes.body.data[0];
+    const pg = await req('GET', `/api/comick/pages?url=${encodeURIComponent(first.url)}`);
+    pagesN = pg.body.data ? pg.body.data.length : 0;
+    pagesOk = pg.status === 200 && pagesN > 0;
   }
-  check('feed readable chapters', feedOk, chapterId ? `chapter=${chapterId}s` : 'none found');
-  check('at-home pages', pagesAtHome > 0, `pages=${pagesAtHome}`);
+  check('comick pages', pagesOk, `pages=${pagesN}`);
 
-  // 12. bulk
-  const bk = await req('GET', '/api/mdex/bulk?ids=ade0306c-f4b6-4890-9edb-1ddf04df2039');
-  check('bulk', bk.status === 200 && bk.body.data.length === 1);
+  // 11. comick latest + resolve
+  const la = await req('GET', '/api/comick/latest?source=mangaread');
+  check('comick latest', la.status === 200 && la.body.data.length > 0, `count=${la.body.data.length}`);
+  const rs = await req('POST', '/api/comick/resolve', { ids: [cxId] });
+  check('comick resolve', rs.status === 200 && rs.body.data.length === 1 && !!rs.body.data[0].cover);
+  const gn = await req('GET', '/api/comick/genres?source=mangaread');
+  check('comick genres', gn.status === 200 && gn.body.data.length > 10 && gn.body.data.some((g) => g.id === 'action'), `count=${gn.body.data.length}`);
+  const gr = await req('GET', '/api/comick/genre?source=mangaread&genre=action');
+  check('comick genre page', gr.status === 200 && gr.body.data.length > 0, `count=${gr.body.data.length}`);
+  const gr2 = await req('GET', '/api/comick/genre?source=mangaread&genre=manhwa');
+  check('comick type genre', gr2.status === 200 && gr2.body.data.length > 0, `count=${gr2.body.data.length}`);
 
   // 12b. originals: unauth create rejected
   const oc0 = await req('POST', '/api/originals', { title: 'X' });

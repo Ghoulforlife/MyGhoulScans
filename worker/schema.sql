@@ -33,3 +33,46 @@ CREATE TABLE IF NOT EXISTS progress (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (user_id, manga_id)
 );
+
+-- Chapter read counters + popularity (user_id NULL = guest read)
+CREATE TABLE IF NOT EXISTS reads (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  manga_id   TEXT NOT NULL,
+  chapter_id TEXT NOT NULL,
+  user_id    INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reads_chapter ON reads(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_reads_manga ON reads(manga_id);
+
+-- Chapter comments (+ likes/dislikes, auto-pin/block thresholds in worker.js)
+CREATE TABLE IF NOT EXISTS comments (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  manga_id   TEXT NOT NULL,
+  chapter_id TEXT NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       TEXT NOT NULL,
+  pinned     INTEGER NOT NULL DEFAULT 0,
+  blocked    INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(chapter_id, blocked, created_at);
+
+CREATE TABLE IF NOT EXISTS comment_votes (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+  vote       INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, comment_id)
+);
+
+-- Reader-curated recommendations
+CREATE TABLE IF NOT EXISTS recs (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  manga_id     TEXT NOT NULL,
+  rec_manga_id TEXT NOT NULL,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (manga_id, rec_manga_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recs_manga ON recs(manga_id);
