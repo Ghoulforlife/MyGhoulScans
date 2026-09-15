@@ -937,7 +937,7 @@ let currentUser = null;
 // Static build: MangaDex reads go through your Cloudflare worker (worker.js),
 // which adds CORS + caching. Covers/pages come straight from MangaDex's CDN.
 // 1. Deploy worker/ to Cloudflare, 2. paste your worker URL below.
-const API_BASE = 'https://REPLACE-WITH-YOUR-WORKER.workers.dev';
+const API_BASE = 'https://myghoulscans-api.kev2op2021.workers.dev';
 async function api(path, opts = {}) {
   let url = path;
   if (path.startsWith('/api/mdex/')) url = API_BASE + path.slice('/api/mdex'.length);
