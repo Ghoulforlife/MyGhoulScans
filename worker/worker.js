@@ -367,7 +367,161 @@ async function verifyPassword(pw, stored) {
     return hex(bits) === hashHex;
   } catch { return false; }
 }
-const userPublic = (u) => u && { id: u.id, email: u.email, display_name: u.display_name, avatar: u.avatar, created_at: u.created_at };
+const userPublic = (u) => u && { id: u.id, email: u.email, display_name: u.display_name, avatar: u.avatar, rp: u.rp || 0, name_color: u.name_color || '', title: u.title || '', frame: u.frame || '', theme: u.theme || '', owned: u.owned || '[]', created_at: u.created_at };
+// Runtime migration for pre-existing D1 databases (schema.sql covers fresh
+// ones): Reader Points + shop cosmetics columns. Runs once per isolate.
+let userColsEnsured = false;
+async function ensureUserColumns(env) {
+  if (userColsEnsured || !env.DB) return;
+  for (const ddl of [
+    'ALTER TABLE users ADD COLUMN rp INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT \'\'',
+    'ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT \'\'',
+    'ALTER TABLE users ADD COLUMN frame TEXT NOT NULL DEFAULT \'\'',
+    'ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT \'\'',
+    'ALTER TABLE users ADD COLUMN owned TEXT NOT NULL DEFAULT \'[]\'',
+  ]) {
+    try { await env.DB.prepare(ddl).run(); } catch {}
+  }
+  userColsEnsured = true;
+}
+// RP value of a single vote state (+2 per like, -1 per dislike, 0 none).
+const rpVoteValue = (v) => (v === 1 ? 2 : v === -1 ? -1 : 0);
+// Shop catalog (prices enforced here — the client never sends a price).
+// Colors run 1k (common) to 1M (mythic Rainbow); titles scale with coolness.
+const _shopSlug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const _shopTitleFx = (price) => (price >= 300000 ? 'legend' : price >= 50000 ? 'veteran' : price >= 8000 ? 'critic' : '');
+const SHOP_EXTRA_COLORS = [
+  ['Ember Red', '#ff5252', 1000], ['Cherry', '#de3163', 1200], ['Brick', '#b22222', 1200],
+  ['Rust', '#b7410e', 1500], ['Amber', '#ffbf00', 1800], ['Honey', '#eb9605', 1800],
+  ['Lemon', '#fff44f', 2000], ['Lime', '#32cd32', 2000], ['Mint', '#98ff98', 2200],
+  ['Jade', '#00a86b', 2500], ['Teal', '#008080', 2500], ['Sky', '#87ceeb', 2800],
+  ['Azure', '#007fff', 2800], ['Cobalt', '#0047ab', 3000], ['Indigo', '#4b0082', 3000],
+  ['Lilac', '#c8a2c8', 3500], ['Mauve', '#e0b0ff', 3500], ['Rose', '#f33a6a', 4000],
+  ['Coral', '#ff7f50', 4000], ['Salmon', '#fa8072', 4500], ['Peach', '#ffe5b4', 4500],
+  ['Banana', '#ffe135', 5000], ['Blush', '#ffb6c1', 5000], ['Sand', '#c2b280', 5000],
+  ['Scarlet', '#ff2400', 6000], ['Ruby Red', '#e0115f', 7000], ['Wine', '#722f37', 7000],
+  ['Maroon', '#800000', 8000], ['Olive', '#808000', 8000], ['Moss', '#8a9a5b', 9000],
+  ['Forest Green', '#228b22', 9000], ['Pine', '#01796f', 10000], ['Seafoam', '#93e9be', 10000],
+  ['Aqua', '#00ffff', 11000], ['Turquoise', '#40e0d0', 11000], ['Sapphire', '#0f52ba', 12000],
+  ['Navy', '#000080', 12000], ['Midnight Blue', '#191970', 13000], ['Plum', '#dda0dd', 13000],
+  ['Orchid', '#da70d6', 14000], ['Magenta', '#ff00ff', 14000], ['Fuchsia', '#ff77ff', 15000],
+  ['Tangerine', '#f28500', 15000], ['Apricot', '#fbceb1', 16000], ['Copper', '#b87333', 18000],
+  ['Bronze Tone', '#cd7f32', 18000], ['Brass', '#b5a642', 20000], ['Khaki', '#c3b091', 20000],
+  ['Taupe', '#483c32', 22000], ['Slate', '#708090', 22000], ['Charcoal', '#36454f', 25000],
+  ['Onyx', '#353839', 25000], ['Blood Moon', '#7a0c0c', 30000], ['Lava', '#cf1020', 35000],
+  ['Sunset Orange', '#fd5e53', 40000], ['Dusk', '#463547', 40000], ['Dawn', '#f2c38f', 45000],
+  ['Eclipse Purple', '#343148', 45000], ['Storm', '#4f6666', 50000], ['Thunder', '#545863', 50000],
+  ['Lightning', '#e6e200', 55000], ['Glacier', '#78b7c5', 55000], ['Blizzard', '#a3e7fc', 60000],
+  ['Frostbite', '#c8e9e4', 60000], ['Arctic', '#c9e4e8', 65000], ['Tundra', '#a8b5b2', 65000],
+  ['Savannah', '#d9c287', 70000], ['Desert Sand', '#edc9af', 70000], ['Oasis', '#99c199', 75000],
+  ['Lagoon', '#4ecdc4', 75000], ['Reef', '#0fb5ae', 80000], ['Abyss', '#1b2a4a', 80000],
+  ['Phantom Gray', '#6e6e6e', 90000], ['Ghost White', '#f8f8ff', 100000], ['Specter', '#9d9d9d', 100000],
+  ['Sage', '#9caf88', 110000], ['Steel', '#71797e', 110000], ['Bone', '#e3dac9', 120000],
+  ['Ash', '#b2beb5', 120000], ['Champagne', '#f7e7ce', 150000], ['Platinum Tone', '#e5e4e2', 180000],
+  ['Diamond Blue', '#b9f2ff', 200000], ['Crystal', '#a7d8f0', 200000], ['Prism', '#8e7cc3', 220000],
+  ['Aurora', '#78dbe2', 220000], ['Nebula', '#451e8d', 250000], ['Galaxy', '#2d2d7a', 250000],
+  ['Cosmos', '#130f40', 300000], ['Infinity Blue', '#0018a8', 300000], ['Eternity Dark', '#0f0f23', 350000],
+  ['Void Purple', '#2b0a3d', 350000], ['Celestial', '#4997d0', 400000], ['Wisteria', '#c9a0dc', 400000],
+  ['Holy Light', '#f5f5f5', 450000], ['Sacred Gold', '#bc9c22', 450000], ['Starlight', '#fff9e3', 500000],
+  ['Phoenix Fire', '#e25822', 600000], ['Dragonblood', '#8c001a', 650000], ['Titansteel', '#757575', 700000],
+  ['Godslayer', '#2e0854', 750000], ['Kingslayer', '#c0a060', 800000], ['Worldender', '#1a1a2e', 850000],
+  ['Omnipotent', '#ffffff', 900000], ['Solar Flare', '#ffdf00', 950000],
+  ['Candy', 'linear-gradient(90deg,#ff9ff3,#54a0ff)', 50000],
+  ['Mint Chip', 'linear-gradient(90deg,#0d2818,#a3e7a3)', 60000],
+  ['Grape Fizz', 'linear-gradient(90deg,#3a1c71,#d76d77)', 55000],
+  ['Smolder', 'linear-gradient(90deg,#0a0a0a,#ff5252)', 25000],
+  ['Venom', 'linear-gradient(90deg,#1a2f1a,#7fff00)', 70000],
+  ['Bloodwine', 'linear-gradient(90deg,#1a0000,#e0115f)', 80000],
+  ['Frostfire', 'linear-gradient(90deg,#a3e7fc,#ff6b35)', 90000],
+  ['Golden Hour', 'linear-gradient(90deg,#f7971e,#ffd200)', 95000],
+  ['Duskblaze', 'linear-gradient(90deg,#2b1055,#ff7a3d)', 110000],
+  ['Ultraviolet', 'linear-gradient(90deg,#240b36,#c31432)', 130000],
+  ['Siren', 'linear-gradient(90deg,#1a2980,#26d0ce)', 140000],
+  ['Regal Gold', 'linear-gradient(90deg,#4b2e83,#ffd24a)', 150000],
+  ['Rose Gold', 'linear-gradient(90deg,#b76e79,#f7e7ce)', 160000],
+  ['Magma Flow', 'linear-gradient(90deg,#0f0c29,#ff4e50)', 170000],
+  ['Voidwalk', 'linear-gradient(90deg,#0f0c29,#8041c8)', 180000],
+  ['Bloodshadow', 'linear-gradient(135deg,#ff1a1a,#000000)', 120000],
+  ['Crimson Abyss', 'linear-gradient(135deg,#7a0c1e,#050508)', 220000],
+  ['Golden Shadow', 'linear-gradient(135deg,#ffd24a,#1a1206)', 260000],
+  ['Violet Night', 'linear-gradient(135deg,#b16cea,#060312)', 280000],
+  ['Emerald Abyss', 'linear-gradient(135deg,#35d07f,#04120a)', 240000],
+  ['Midnight Ember', 'linear-gradient(135deg,#ff7a3d,#0d0503)', 200000],
+];
+const SHOP_EXTRA_TITLES = [
+  ['Drifter', 1000], ['Stranger', 1200], ['Nomad', 1500], ['Squire', 1800],
+  ['Page', 2000], ['Rascal', 2000], ['Rookie', 2200], ['Trainee', 2200],
+  ['Pupil', 2500], ['Student', 2500], ['Peasant', 2800], ['Commoner', 2800],
+  ['Villager', 3000], ['Fisher', 3000], ['Farmer', 3200], ['Miner', 3200],
+  ['Clerk', 3500], ['Scribe', 3500], ['Bard', 4000], ['Jester', 4000],
+  ['Gambler', 4500], ['Outlaw', 4500], ['Bandit', 5000], ['Acolyte', 5200],
+  ['Scout', 5500], ['Hunter', 6000], ['Ranger', 6500], ['Archer', 6500],
+  ['Swordsman', 7000], ['Lancer', 7000], ['Brawler', 7500], ['Fighter', 7500],
+  ['Warrior', 8000], ['Soldier', 8500], ['Knight', 9000], ['Guardian', 9000],
+  ['Protector', 9500], ['Defender', 9500], ['Warden', 10000], ['Sentinel', 10000],
+  ['Watcher', 11000], ['Seeker', 11000], ['Tracker', 12000], ['Stalker', 13000],
+  ['Raider', 13000], ['Reaver', 14000], ['Slayer', 15000], ['Executioner', 16000],
+  ['Assassin', 18000], ['Shinobi', 18000], ['Ninja', 20000], ['Ronin', 20000],
+  ['Samurai', 22000], ['Duelist', 22000], ['Gladiator', 25000], ['Pit Fighter', 28000],
+  ['Champion', 30000], ['Hero', 35000], ['Prodigy', 35000], ['Genius', 40000],
+  ['Master', 40000], ['Grandmaster', 45000], ['Sage', 45000], ['Mystic', 50000],
+  ['Oracle', 55000], ['Prophet', 55000], ['Seer', 60000], ['Enchanter', 60000],
+  ['Sorcerer', 65000], ['Warlock', 65000], ['Witch', 70000], ['Wizard', 70000],
+  ['Mage', 75000], ['Archmage', 80000], ['Necromancer', 85000], ['Summoner', 85000],
+  ['Tamer', 90000], ['Elementalist', 90000], ['Stormcaller', 95000], ['Frostborn', 95000],
+  ['Firebrand', 100000], ['Thunderlord', 100000], ['Earthshaker', 105000], ['Tidecaller', 105000],
+  ['Windrunner', 110000], ['Starforged', 110000], ['Moonblessed', 115000], ['Sunsworn', 115000],
+  ['Dawnbringer', 120000], ['Paladin', 130000], ['Crusader', 140000], ['Templar', 150000],
+  ['Berserker', 160000], ['Warlord', 180000], ['Conqueror', 200000], ['Destroyer', 220000],
+  ['Annihilator', 250000], ['Overlord', 280000], ['Emperor', 300000], ['Empress', 320000],
+  ['Sovereign', 350000], ['Celestial One', 450000], ['Seraphim', 500000], ['Archangel', 550000],
+  ['Titan Lord', 600000], ['Dragonlord', 650000], ['Phoenix Born', 700000], ['Eternal One', 800000],
+];
+const SHOP_CATALOG = [
+  { id: 'color-crimson', slot: 'color', name: 'Crimson Name', price: 1500, value: '#ff5c5c', desc: 'A sharp red username' },
+  { id: 'color-gold', slot: 'color', name: 'Gold Name', price: 12000, value: '#ffd24a', desc: 'Rich gold username' },
+  { id: 'color-violet', slot: 'color', name: 'Violet Name', price: 45000, value: '#b16cea', desc: 'Deep violet username' },
+  { id: 'color-ocean', slot: 'color', name: 'Ocean Name', price: 60000, value: '#38e1ff', desc: 'Bright cyan username' },
+  { id: 'color-rainbow', slot: 'color', name: 'Rainbow Name', price: 1000000, value: 'rainbow', desc: 'Animated rainbow username' },
+  ...SHOP_EXTRA_COLORS.map(([name, css, price]) => ({ id: 'color-' + _shopSlug(name), slot: 'color', name, price, value: css, desc: 'A unique username color' })),
+  { id: 'title-newbie', slot: 'title', name: 'Newbie', price: 1000, value: 'Newbie', desc: 'A humble little badge' },
+  { id: 'title-regular', slot: 'title', name: 'Regular', price: 2500, value: 'Regular', desc: 'For familiar faces' },
+  { id: 'title-critic', slot: 'title', name: 'Critic', price: 15000, value: 'Critic', fx: 'critic', desc: 'Red-edged comment badge' },
+  { id: 'title-veteran', slot: 'title', name: 'Veteran', price: 80000, value: 'Veteran', fx: 'veteran', desc: 'Gold glowing comment badge' },
+  { id: 'title-legend', slot: 'title', name: 'Legend', price: 500000, value: 'Legend', fx: 'legend', desc: 'Animated shining comment badge' },
+  ...SHOP_EXTRA_TITLES.map(([name, price]) => ({ id: 'title-' + _shopSlug(name), slot: 'title', name, price, value: name, fx: _shopTitleFx(price), desc: 'A title beside your name' })),
+  { id: 'frame-bronze', slot: 'frame', name: 'Bronze Ring', price: 80, value: 'bronze', desc: 'Bronze avatar ring' },
+  { id: 'frame-silver', slot: 'frame', name: 'Silver Ring', price: 200, value: 'silver', desc: 'Silver avatar ring' },
+  { id: 'frame-gold', slot: 'frame', name: 'Gold Ring', price: 400, value: 'gold', desc: 'Gold avatar ring' },
+  { id: 'frame-neon', slot: 'frame', name: 'Neon Pulse', price: 700, value: 'neon', desc: 'Pulsing neon avatar ring' },
+  { id: 'frame-platinum', slot: 'frame', name: 'Platinum Ring', price: 1500, value: 'platinum', desc: 'Platinum avatar ring' },
+  { id: 'frame-diamond', slot: 'frame', name: 'Diamond Ring', price: 5000, value: 'diamond', desc: 'Icy diamond avatar ring' },
+  { id: 'frame-ruby', slot: 'frame', name: 'Ruby Ring', price: 12000, value: 'ruby', desc: 'Blood-red avatar ring' },
+  { id: 'frame-frost', slot: 'frame', name: 'Frost Ring', price: 25000, value: 'frost', desc: 'Frozen avatar ring' },
+  { id: 'frame-magma', slot: 'frame', name: 'Magma Ring', price: 60000, value: 'magma', desc: 'Molten avatar ring' },
+  { id: 'frame-royal', slot: 'frame', name: 'Royal Ring', price: 150000, value: 'royal', desc: 'Regal purple avatar ring' },
+  { id: 'frame-cosmic', slot: 'frame', name: 'Cosmic Ring', price: 400000, value: 'cosmic', desc: 'Starfield avatar ring' },
+  { id: 'frame-void', slot: 'frame', name: 'Void Pulse', price: 750000, value: 'void', desc: 'Pulsing void avatar ring' },
+  { id: 'frame-ribbon', slot: 'frame', name: 'Fae Ribbon', price: 250000, value: 'ribbon', desc: 'Shimmering iridescent ring with sparkles' },
+  { id: 'frame-crest-silver', slot: 'frame', name: 'Silver Crest', price: 300000, value: 'crest-silver', desc: 'Silver crest ring with a gem' },
+  { id: 'frame-crest-gold', slot: 'frame', name: 'Golden Crest', price: 600000, value: 'crest-gold', desc: 'Golden crest ring with a gem' },
+  { id: 'frame-crest-mythic', slot: 'frame', name: 'Mythic Crest', price: 950000, value: 'crest-mythic', desc: 'Pulsing mythic crest ring with a gem' },
+  { id: 'frame-pearl', slot: 'frame', name: 'Pearl String', price: 60000, value: 'pearl', desc: 'Dotted pearl avatar ring' },
+  { id: 'frame-obsidian', slot: 'frame', name: 'Obsidian', price: 90000, value: 'obsidian', desc: 'Dark stone avatar ring' },
+  { id: 'frame-laurel', slot: 'frame', name: 'Laurel', price: 120000, value: 'laurel', desc: 'Champion green-and-gold ring' },
+  { id: 'frame-stormcall', slot: 'frame', name: 'Stormcall', price: 200000, value: 'stormcall', desc: 'Crackling storm avatar ring' },
+  { id: 'frame-crest', slot: 'frame', name: 'Royal Crest', price: 300000, value: 'crest', desc: 'Metallic gold crest ring' },
+  { id: 'frame-bloodmoon', slot: 'frame', name: 'Blood Moon', price: 350000, value: 'bloodmoon', desc: 'Dark-red lunar ring' },
+  { id: 'frame-prismatic', slot: 'frame', name: 'Prismatic', price: 500000, value: 'prismatic', desc: 'Triple rainbow avatar rings' },
+  { id: 'frame-seraph', slot: 'frame', name: 'Seraphim', price: 800000, value: 'seraph', desc: 'Radiant white-gold ring' },
+  { id: 'theme-crimson', slot: 'theme', name: 'Crimson Night', price: 300, value: 'crimson-night', desc: 'Blood-red app theme' },
+  { id: 'theme-ocean', slot: 'theme', name: 'Deep Ocean', price: 300, value: 'deep-ocean', desc: 'Deep-blue app theme' },
+  { id: 'theme-forest', slot: 'theme', name: 'Forest Night', price: 400, value: 'forest-night', desc: 'Deep-green app theme' },
+  { id: 'theme-sunset', slot: 'theme', name: 'Ember Sunset', price: 500, value: 'sunset-ember', desc: 'Burnt-orange app theme' },
+  { id: 'theme-royal', slot: 'theme', name: 'Royal Violet', price: 1000, value: 'royal-violet', desc: 'Regal purple app theme' },
+];
+const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
 async function authUser(req, env) {
   if (!env.DB) return null;
   const h = req.headers.get('Authorization') || '';
@@ -375,7 +529,13 @@ async function authUser(req, env) {
   if (!m) return null;
   const s = await env.DB.prepare('SELECT * FROM sessions WHERE token = ?').bind(m[1]).first();
   if (!s || new Date(s.expires) < new Date()) return null;
-  return env.DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(s.user_id).first();
+  return env.DB.prepare('SELECT id, email, display_name, avatar, rp, name_color, title, frame, theme, owned, created_at FROM users WHERE id = ?').bind(s.user_id).first();
+}
+// Anti-farm: votes only award RP once the voter's account is a day old.
+const VOTE_RP_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+function voterOldEnough(createdAt) {
+  const t = Date.parse(String(createdAt || '').replace(' ', 'T'));
+  return !isNaN(t) && Date.now() - t >= VOTE_RP_MIN_AGE_MS;
 }
 async function readJson(req) {
   try { return await req.json(); } catch { return {}; }
@@ -399,9 +559,13 @@ export default {
     const url = new URL(req.url);
     const q = url.searchParams;
     const p = url.pathname;
+    // Build stamp (proves which code is actually deployed).
+    if (p === '/version' && req.method === 'GET') {
+      return json({ build: 'mgs-shop-rp-2', time: new Date().toISOString() });
+    }
     if (p.startsWith('/auth/') || p.startsWith('/library') || p.startsWith('/progress')
       || p.startsWith('/reads') || p.startsWith('/popular') || p.startsWith('/comments')
-      || p.startsWith('/recs') || p.startsWith('/history') || p.startsWith('/me/') || p.startsWith('/originals')) {
+      || p.startsWith('/recs') || p.startsWith('/history') || p.startsWith('/me/') || p.startsWith('/shop') || p.startsWith('/originals')) {
       if (!env.DB && !p.startsWith('/originals')) return err('Accounts database not connected', 503);
       return handleAccount(req, env, p, q);
     }
@@ -519,8 +683,9 @@ export default {
         const source = String(q.get('source') || 'mangaread').trim().toLowerCase();
         const genre = String(q.get('genre') || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
         if (!genre) return err('genre is required', 400);
-        const page = Math.max(1, Math.min(20, parseInt(q.get('page') || '1', 10) || 1));
-        const key = `${source}:${genre}:${page}`;
+        const page = Math.max(1, Math.min(50, parseInt(q.get('page') || '1', 10) || 1));
+        const enrich = q.get('enrich') === '1';
+        const key = `${source}:${genre}:${page}:${enrich ? 'full' : 'base'}`;
         const hit = genreCache.get(key);
         if (hit && Date.now() - hit.at < GENRE_TTL) return json(hit.data, 200, 120);
         const base = (await comickSourceBase(env, source)) || 'https://www.mangaread.org';
@@ -528,7 +693,11 @@ export default {
         const html = await fetchHtml(gurl);
         const items = extractLatestWp(html, gurl);
         if (!items.length) throw new Error('No titles in this genre on this source');
-        const data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })), page };
+        let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })), page };
+        if (enrich) {
+          const slice = data.data.slice(0, 15);
+          data = { data: await enrichItems(slice).then((m) => slice.map((it) => ({ ...it, ...(m.get(it.id) || {}) }))), page };
+        }
         genreCache.set(key, { data, at: Date.now() });
         return json(data, 200, 120);
       }
@@ -592,6 +761,7 @@ function shapePages(req, pages, curl, raw) {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 async function handleAccount(req, env, p, q) {
   const DB = env.DB;
+  await ensureUserColumns(env).catch(() => {});
   const ip = req.headers.get('CF-Connecting-IP') || 'x';
   const me = await authUser(req, env);
   const needAuth = () => { if (!me) throw Object.assign(new Error('Not logged in'), { status: 401 }); };
@@ -611,9 +781,27 @@ async function handleAccount(req, env, p, q) {
         { headers: { ...CORS, 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=3600' } },
       );
     }
-    // Custom avatars need file storage — full server only.
+    // Custom avatars need file storage — full server only. The small
+    // data-URL flow below works everywhere (static build included).
     if ((p === '/auth/avatar' || p === '/auth/avatar/') && (req.method === 'POST' || req.method === 'DELETE')) {
       return err('Custom profile pictures need the full server (Render build)', 503);
+    }
+    const mAv = p.match(/^\/?auth\/avatar-data\/?$/);
+    if (mAv && req.method === 'POST') {
+      needDb();
+      needAuth();
+      const { image } = await readJson(req);
+      const m = /^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(image || ''));
+      if (!m) return err('Attach an image', 400);
+      if (String(image).length > 100000) return err('Image too large — pick a smaller file', 400);
+      await DB.prepare('UPDATE users SET avatar = ? WHERE id = ?').bind(String(image), me.id).run().catch(() => null);
+      return json({ ok: true, avatar: String(image) });
+    }
+    if (mAv && req.method === 'DELETE') {
+      needDb();
+      needAuth();
+      await DB.prepare('UPDATE users SET avatar = NULL WHERE id = ?').bind(me.id).run().catch(() => null);
+      return json({ ok: true });
     }
     // Signup
     if (p === '/auth/signup' && req.method === 'POST') {
@@ -639,7 +827,7 @@ async function handleAccount(req, env, p, q) {
       const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '');
       const exp = new Date(Date.now() + 30 * 864e5).toISOString();
       await DB.prepare('INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)').bind(token, id, exp).run();
-      const user = await DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(id).first();
+      const user = await DB.prepare('SELECT id, email, display_name, avatar, rp, name_color, title, frame, theme, owned, created_at FROM users WHERE id = ?').bind(id).first();
       return json({ user: userPublic(user), token });
     }
     // Login
@@ -654,7 +842,7 @@ async function handleAccount(req, env, p, q) {
       const token = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '');
       const exp = new Date(Date.now() + 30 * 864e5).toISOString();
       await DB.prepare('INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)').bind(token, u.id, exp).run();
-      const user = await DB.prepare('SELECT id, email, display_name, avatar, created_at FROM users WHERE id = ?').bind(u.id).first();
+      const user = await DB.prepare('SELECT id, email, display_name, avatar, rp, name_color, title, frame, theme, owned, created_at FROM users WHERE id = ?').bind(u.id).first();
       return json({ user: userPublic(user), token });
     }
     // Logout
@@ -824,7 +1012,8 @@ async function handleAccount(req, env, p, q) {
     }
     if (p === '/popular' && req.method === 'GET') {
       needDb();
-      const rows = await DB.prepare('SELECT manga_id AS id, COUNT(*) AS n FROM reads GROUP BY manga_id ORDER BY n DESC LIMIT 10').bind().all().catch(() => ({ results: [] }));
+      const limit = Math.max(1, Math.min(30, parseInt(q.get('limit') || '10', 10) || 10));
+      const rows = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads GROUP BY manga_id ORDER BY n DESC LIMIT ${limit}`).bind().all().catch(() => ({ results: [] }));
       return json({ data: rows.results });
     }
     // Comments (per chapter)
@@ -832,7 +1021,7 @@ async function handleAccount(req, env, p, q) {
       needDb();
       const chapterId = String(q.get('chapter') || '');
       if (!chapterId) return err('chapter is required', 400);
-      const rows = await DB.prepare(`SELECT c.id, c.manga_id, c.chapter_id, c.body, c.pinned, c.created_at, u.display_name,
+      const rows = await DB.prepare(`SELECT c.id, c.manga_id, c.chapter_id, c.body, c.pinned, c.created_at, u.display_name, u.name_color, u.title, u.frame,
           (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.vote = 1) AS likes,
           (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.vote = -1) AS dislikes,
           (SELECT v.vote FROM comment_votes v WHERE v.comment_id = c.id AND v.user_id = ?) AS my_vote
@@ -858,10 +1047,13 @@ async function handleAccount(req, env, p, q) {
     if (m && req.method === 'POST') {
       needDb();
       needAuth();
+      if (limited(ip, 'vote', 60, 600000)) return err('Too many votes — slow down', 429);
       const { vote } = await readJson(req);
       if (vote !== 1 && vote !== -1) return err('vote must be 1 or -1', 400);
       const cid = Number(m[1]);
+      const target = await DB.prepare('SELECT user_id FROM comments WHERE id = ?').bind(cid).first();
       const existing = await DB.prepare('SELECT * FROM comment_votes WHERE user_id = ? AND comment_id = ?').bind(me.id, cid).first();
+      const oldVote = existing ? existing.vote : 0;
       if (existing && existing.vote === vote) {
         await DB.prepare('DELETE FROM comment_votes WHERE user_id = ? AND comment_id = ?').bind(me.id, cid).run();
       } else {
@@ -876,8 +1068,15 @@ async function handleAccount(req, env, p, q) {
       if (dislikes >= COMMENTS_BLOCK_AT) await DB.prepare('UPDATE comments SET blocked = 1 WHERE id = ?').bind(cid).run();
       else if (likes >= COMMENTS_PIN_AT) await DB.prepare('UPDATE comments SET pinned = 1 WHERE id = ?').bind(cid).run();
       const myVote = await DB.prepare('SELECT vote FROM comment_votes WHERE user_id = ? AND comment_id = ?').bind(me.id, cid).first();
+      const newVote = myVote ? myVote.vote : 0;
+      // Reader Points follow the vote transition (self-votes never award RP,
+      // and brand-new voter accounts don't either).
+      if (target && target.user_id !== me.id && newVote !== oldVote && voterOldEnough(me.created_at)) {
+        const d = rpVoteValue(newVote) - rpVoteValue(oldVote);
+        if (d) await DB.prepare('UPDATE users SET rp = MAX(0, rp + ?) WHERE id = ?').bind(d, target.user_id).run().catch(() => {});
+      }
       const flags = await DB.prepare('SELECT pinned, blocked FROM comments WHERE id = ?').bind(cid).first();
-      return json({ likes, dislikes, myVote: myVote ? myVote.vote : 0, pinned: !!(flags && flags.pinned), blocked: !!(flags && flags.blocked) });
+      return json({ likes, dislikes, myVote: newVote, pinned: !!(flags && flags.pinned), blocked: !!(flags && flags.blocked) });
     }
     m = p.match(/^\/comments\/(\d+)$/);
     if (m && req.method === 'DELETE') {
@@ -886,8 +1085,84 @@ async function handleAccount(req, env, p, q) {
       const c = await DB.prepare('SELECT * FROM comments WHERE id = ?').bind(Number(m[1])).first();
       if (!c) return err('Comment not found', 404);
       if (c.user_id !== me.id) return err('Only the author can delete this comment', 403);
+      // Retract RP the comment earned from other readers (self-votes never
+      // awarded any), so delete-and-repost can't duplicate points.
+      const tallies = await DB.prepare(`SELECT
+          (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ? AND vote = 1 AND user_id != ?) AS likes,
+          (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ? AND vote = -1 AND user_id != ?) AS dislikes`)
+        .bind(c.id, c.user_id, c.id, c.user_id).first().catch(() => null);
+      if (tallies) {
+        const d = -(((tallies.likes || 0) * 2) + ((tallies.dislikes || 0) * -1));
+        if (d) await DB.prepare('UPDATE users SET rp = MAX(0, rp + ?) WHERE id = ?').bind(d, c.user_id).run().catch(() => {});
+      }
       await DB.prepare('DELETE FROM comments WHERE id = ?').bind(c.id).run();
       return json({ ok: true });
+    }
+    // Shop (Reader Points cosmetics). Prices enforced here.
+    if (p === '/shop' && req.method === 'GET') {
+      needDb();
+      const uid = me ? me.id : null;
+      let owned = [];
+      let eq = { name_color: '', title: '', frame: '', theme: '' };
+      let balance = 0;
+      if (uid) {
+        const row = await DB.prepare('SELECT rp, name_color, title, frame, theme, owned FROM users WHERE id = ?').bind(uid).first().catch(() => null);
+        if (row) {
+          balance = row.rp || 0;
+          eq = { name_color: row.name_color || '', title: row.title || '', frame: row.frame || '', theme: row.theme || '' };
+          try { const a = JSON.parse(row.owned || '[]'); if (Array.isArray(a)) owned = a.filter((x) => typeof x === 'string'); } catch {}
+        }
+      }
+      return json({
+        balance, owned, equipped: eq,
+        catalog: SHOP_CATALOG.map((it) => ({ ...it, owned: owned.includes(it.id), equipped: (eq[SHOP_SLOT_COL[it.slot]] || '') === it.value })),
+      });
+    }
+    if (p === '/shop/buy' && req.method === 'POST') {
+      needDb();
+      needAuth();
+      const { id } = await readJson(req);
+      const item = SHOP_CATALOG.find((i) => i.id === id);
+      if (!item) return err('Unknown item', 404);
+      const col = SHOP_SLOT_COL[item.slot];
+      if (!col) return err('Unknown shop item', 400);
+      const row = await DB.prepare('SELECT rp, owned FROM users WHERE id = ?').bind(me.id).first();
+      let owned = [];
+      try { const a = JSON.parse((row && row.owned) || '[]'); if (Array.isArray(a)) owned = a.filter((x) => typeof x === 'string'); } catch {}
+      if (!owned.includes(item.id)) {
+        if ((row ? row.rp || 0 : 0) < item.price) return err('Not enough RP — earn more from comment likes', 402);
+        owned.push(item.id);
+        await DB.prepare('UPDATE users SET rp = rp - ?, owned = ? WHERE id = ?').bind(item.price, JSON.stringify(owned), me.id).run();
+      }
+      await DB.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).bind(item.value, me.id).run();
+      const after = await DB.prepare('SELECT rp, name_color, title, frame, theme FROM users WHERE id = ?').bind(me.id).first();
+      return json({ ok: true, rp: (after && after.rp) || 0, owned, equipped: { name_color: (after && after.name_color) || '', title: (after && after.title) || '', frame: (after && after.frame) || '', theme: (after && after.theme) || '' } });
+    }
+    if (p === '/shop/equip' && req.method === 'POST') {
+      needDb();
+      needAuth();
+      const { slot, id } = await readJson(req);
+      const col = SHOP_SLOT_COL[slot];
+      if (!col) return err('Unknown slot', 400);
+      const finish = async () => {
+        const after = await DB.prepare('SELECT rp, name_color, title, frame, theme FROM users WHERE id = ?').bind(me.id).first().catch(() => null);
+        const orow = await DB.prepare('SELECT owned FROM users WHERE id = ?').bind(me.id).first().catch(() => null);
+        let owned = [];
+        try { const a = JSON.parse((orow && orow.owned) || '[]'); if (Array.isArray(a)) owned = a.filter((x) => typeof x === 'string'); } catch {}
+        return json({ ok: true, rp: (after && after.rp) || 0, owned, equipped: { name_color: (after && after.name_color) || '', title: (after && after.title) || '', frame: (after && after.frame) || '', theme: (after && after.theme) || '' } });
+      };
+      if (id == null) {
+        await DB.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).bind('', me.id).run();
+        return finish();
+      }
+      const item = SHOP_CATALOG.find((i) => i.id === id && i.slot === slot);
+      if (!item) return err('Unknown item', 404);
+      const orow = await DB.prepare('SELECT owned FROM users WHERE id = ?').bind(me.id).first();
+      let owned = [];
+      try { const a = JSON.parse((orow && orow.owned) || '[]'); if (Array.isArray(a)) owned = a.filter((x) => typeof x === 'string'); } catch {}
+      if (!owned.includes(id)) return err('You do not own this yet', 403);
+      await DB.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).bind(item.value, me.id).run();
+      return finish();
     }
     // Reader recommendations
     if (p === '/recs' && req.method === 'GET') {

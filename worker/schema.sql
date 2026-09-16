@@ -6,6 +6,12 @@ CREATE TABLE IF NOT EXISTS users (
   password     TEXT,
   display_name TEXT,
   avatar       TEXT,
+  rp           INTEGER NOT NULL DEFAULT 0,
+  name_color   TEXT NOT NULL DEFAULT '',
+  title        TEXT NOT NULL DEFAULT '',
+  frame        TEXT NOT NULL DEFAULT '',
+  theme        TEXT NOT NULL DEFAULT '',
+  owned        TEXT NOT NULL DEFAULT '[]',
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display ON users(display_name COLLATE NOCASE);
