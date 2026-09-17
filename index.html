@@ -1712,7 +1712,7 @@ const DEFAULT_PREFS = {
   mode: 'dark',
   mature: false,
   reader: { ...DEFAULT_READER },
-  sections: { latest: true, manga: true, manhwa: true, manhua: true, popular: true },
+  sections: { latest: true, popular: true, comix: true },
 };
 const PREFS_KEY = 'mgs_settings';
 
@@ -1974,9 +1974,7 @@ function openSettings() {
       <div>
         <p class="set-h">Home sections</p>
         ${sw('setSecLatest', s.latest, 'Latest updates')}
-        ${sw('setSecManga', s.manga, 'Manga')}
-        ${sw('setSecManhwa', s.manhwa, 'Manhwa')}
-        ${sw('setSecManhua', s.manhua, 'Manhua')}
+        ${sw('setSecComix', s.comix, 'Comix charts (popular / followed / hot)')}
         ${sw('setSecPopular', s.popular, 'Updates (Hot / New)')}
       </div>
       <div>
@@ -2011,9 +2009,7 @@ function openSettings() {
       reader: prefs.reader,
       sections: {
         latest: $('#setSecLatest').checked,
-        manga: $('#setSecManga').checked,
-        manhwa: $('#setSecManhwa').checked,
-        manhua: $('#setSecManhua').checked,
+        comix: $('#setSecComix').checked,
         popular: $('#setSecPopular').checked,
       },
     });
@@ -2232,9 +2228,9 @@ async function renderHome() {
           </div>
         </div>
         ${sec.latest ? section('Latest updates', 'latestRow', 'all sources') : ''}
-        ${sec.manga ? section('Manga', 'mangaRow', 'Japanese') : ''}
-        ${sec.manhwa ? section('Manhwa', 'manhwaRow', 'Korean') : ''}
-        ${sec.manhua ? section('Manhua', 'manhuaRow', 'Chinese') : ''}
+        ${sec.comix ? section('Most Recent Popular', 'comixTrendRow', 'comix.to') : ''}
+        ${sec.comix ? section('Most Followed New Comics', 'comixFollowRow', 'comix.to') : ''}
+        ${sec.comix ? section('Hot Right Now', 'comixHotRow', 'comix.to') : ''}
         ${sec.popular ? `<div class="sect" id="updatesSect">
           <div class="upd-head">
             <h2 class="sect-title" style="margin:0">Updates</h2>
@@ -2340,34 +2336,51 @@ async function renderHome() {
     wireCards(row);
   };
   const latestUrl = (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`;
-  // Type rows skip enrichment: one light request per source instead of ~16,
-  // so a full home load can't throttle itself into empty rows. Mature
-  // filtering still applies wherever genre data is present.
-  const genreUrl = (s, slug, page) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${page}`;
   const jobs = [];
   if (sec.latest) {
     jobs.push(fanout(MAJOR_SOURCES, (s) => latestUrl(s))
       .then((items) => paintRowItems('latestRow', items, { progressMap, filterAdult: needFilter }))
       .catch(() => paintRowItems('latestRow', [])));
   }
-  // Type rows: genre listings merged across all major sources, backfilled
-  // across pages until ~20 fresh cards.
-  for (const [key, rowId, slug] of [['manga', 'mangaRow', 'manga'], ['manhwa', 'manhwaRow', 'manhwa'], ['manhua', 'manhuaRow', 'manhua']]) {
-    if (!sec[key] || !document.getElementById(rowId)) continue;
+  // Comix charts: one /api/comix/home fetch feeds all three ranked rows
+  // (snapshot-backed on the server, so it loads even though comix.to blocks
+  // datacenters). Rank badges match the chart look.
+  if (sec.comix && (document.getElementById('comixTrendRow') || document.getElementById('comixFollowRow') || document.getElementById('comixHotRow'))) {
     jobs.push((async () => {
-      let acc = [];
-      for (let page = 1; page <= 3 && acc.length < 20; page++) {
-        const items = await fanout(MAJOR_SOURCES, (s) => genreUrl(s, slug, page));
-        for (const m of items) {
+      let feeds = null;
+      let comixErr = '';
+      try {
+        feeds = (await api('/api/comix/home')).data || null;
+      } catch (e) { feeds = null; comixErr = (e && e.message) || 'load failed'; }
+      const paintRanked = (rowId, items) => {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        let list = needFilter ? applyMatureFilter(items || []) : (items || []);
+        const fresh = [];
+        for (const m of list) {
           if (!m || !m.id || used.has(m.id)) continue;
           used.add(m.id);
-          acc.push(m);
-          if (acc.length >= 24) break;
+          fresh.push(m);
+          if (fresh.length >= 18) break;
         }
-        if (!document.getElementById(rowId)) return;
+        if (!fresh.length) {
+          row.innerHTML = `<div class="centered small">${!feeds ? `Could not load charts (${esc(comixErr)})` : 'Nothing here yet'}</div>`;
+          return;
+        }
+        fresh.forEach((m) => { if (hasNewChapters(m, progressMap)) m._new = true; });
+        row.innerHTML = fresh.map((m, i) => mangaCard(m, { h: true, rank: i + 1 })).join('');
+        wireCards(row);
+      };
+      if (!feeds) {
+        paintRanked('comixTrendRow', []);
+        paintRanked('comixFollowRow', []);
+        paintRanked('comixHotRow', []);
+        return;
       }
-      paintRowItems(rowId, acc, { progressMap });
-    })().catch(() => paintRowItems(rowId, [])));
+      paintRanked('comixTrendRow', feeds.trending);
+      paintRanked('comixFollowRow', feeds.follows);
+      paintRanked('comixHotRow', feeds.hot);
+    })());
   }
   await Promise.all(jobs);
   // Recommended starts only after the rows above (plus whatever the sidebar
