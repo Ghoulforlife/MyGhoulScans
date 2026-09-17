@@ -668,9 +668,13 @@ app.get('/api/popular', (req, res) => {
 // those are scraped directly from source sites below (same cheerio-style
 // approach upstream uses, dependency-free).
 // Sources used when the client doesn't pick one. Override with
-// COMICK_SOURCES="mangaread,mangayy,mangasushi,flamecomics".
-const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,mangayy,mangasushi,flamecomics')
+// COMICK_SOURCES="mangaread,flamecomics,mangayy,mangataro,demonicscans".
+const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,flamecomics,mangayy,mangataro,demonicscans')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+// Upstream search health, verified 2026-09-17 (query "solo leveling" etc.).
+// Priority sources return results; dead ones are Shutdown or always empty.
+const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans'];
+const SEARCH_DEAD = new Set(['bato', 'mangapark', 'falcon-scans', 'weebdex', 'mangasushi', 'madarascans']);
 
 // Client IDs look like "cx:mangaread:<base64url(manga page URL)>": one clean
 // hash segment that always resolves back to the exact source URL, so no
@@ -889,7 +893,8 @@ async function cachedTitle(source, url) {
 // hid plus genres). Chapter images need their private API, so chapters below
 // expose first/latest links opened externally.
 async function scrapeComixTitle(url) {
-  const html = await fetchComixHtml(url, 'https://comix.to/');
+  try {
+    const html = await fetchComixHtml(url, 'https://comix.to/');
   const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
   if (!m) throw new Error('Comix title data not found');
   const initial = JSON.parse(m[1]);
@@ -912,6 +917,12 @@ async function scrapeComixTitle(url) {
     firstChapterUrl: d.firstChapterUrl ? 'https://comix.to' + d.firstChapterUrl : '',
     latestChapterUrl: d.latestChapterUrl ? 'https://comix.to' + d.latestChapterUrl : '',
   };
+  } catch (e) {
+    const snap = comixSnapshot && comixSnapshot.titles;
+    const hit = snap && snap[url];
+    if (hit) return hit;
+    throw e;
+  }
 }
 async function comixChapters(mangaUrl) {
   const t = await scrapeComixTitle(mangaUrl);
@@ -1060,13 +1071,20 @@ app.get('/api/comick/sources', async (req, res) => {
 
 // Search one or more sources (fan-out, merged). ?q=..&source=mangaread or
 // ?sources=mangaread,flamecomics (default: COMICK_SOURCES).
+// Verified upstream 2026-09-17: only these return search results — the rest
+// are Shutdown (bato, mangapark, ...) or empty (mangasushi, madarascans).
+// Verified sources go first so a 67-source request still searches the best.
 app.get('/api/comick/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim().slice(0, 80);
     if (!q) return res.status(400).json({ error: 'q is required' });
     const single = String(req.query.source || '').trim().toLowerCase();
     const multi = String(req.query.sources || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const sources = [...new Set(single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES))].slice(0, 4);
+    const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
+    const sources = [...new Set([
+      ...SEARCH_PRIORITY.filter((s) => requested.includes(s)),
+      ...requested.filter((s) => !SEARCH_DEAD.has(s)),
+    ])].slice(0, 6);
     const settled = await Promise.allSettled(sources.map(async (source) => {
       const data = await comickApi('/api/search', { method: 'POST', body: { query: q, source } });
       return (data.results || []).map((r) => normResult(source, r));
@@ -1136,6 +1154,12 @@ app.get('/api/comick/latest', async (req, res) => {
 // links (opened externally) rather than in-app reading.
 const comixCache = { data: null, at: 0 };
 const COMIX_TTL = 10 * 60 * 1000;
+// Bundled snapshot fallback (comix.to blocks datacenter IPs): refreshed via
+// scripts/fetch-comix-snapshot.mjs from a normal connection.
+let comixSnapshot = null;
+try {
+  comixSnapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'worker', 'comix-snapshot.json'), 'utf8'));
+} catch {}
 function normComixItem(it) {
   const url = 'https://comix.to' + (it.url || '');
   const poster = (it.poster && (it.poster.large || it.poster.medium)) || '';
@@ -1156,7 +1180,8 @@ function normComixItem(it) {
 }
 async function fetchComixHome() {
   if (comixCache.data && Date.now() - comixCache.at < COMIX_TTL) return comixCache.data;
-  const html = await fetchComixHtml('https://comix.to');
+  try {
+    const html = await fetchComixHtml('https://comix.to');
   const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
   if (!m) throw new Error('Comix homepage data not found');
   const initial = JSON.parse(m[1]);
@@ -1179,9 +1204,20 @@ async function fetchComixHome() {
   if (!data.trending.length && !data.follows.length && !data.hot.length && !data.recent.length) {
     throw new Error('Comix feeds came back empty');
   }
-  comixCache.data = data;
-  comixCache.at = Date.now();
-  return data;
+    comixCache.data = { ...data, stale: false };
+    comixCache.at = Date.now();
+    return comixCache.data;
+  } catch (e) {
+    // comix.to blocks datacenter IPs — fall back to the bundled snapshot
+    // (refresh with scripts/fetch-comix-snapshot.mjs).
+    const snap = comixSnapshot && comixSnapshot.data;
+    if (snap && (snap.trending || snap.follows || snap.hot || snap.recent)) {
+      comixCache.data = { ...snap, stale: true, snapshotAt: comixSnapshot.at || null };
+      comixCache.at = Date.now();
+      return comixCache.data;
+    }
+    throw e;
+  }
 }
 app.get('/api/comix/home', async (req, res) => {
   try {
