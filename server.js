@@ -15,7 +15,7 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const REDIRECT_BASE = process.env.REDIRECT_BASE || `http://localhost:${PORT}`;
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const SESSION_COOKIE = 'mgs_session';
@@ -294,7 +294,9 @@ app.get('/api/auth/google/callback', async (req, res) => {
 // ---------- Library ----------
 app.get('/api/library', requireAuth, (req, res) => {
   const rows = db.listFollows(req.user.id);
-  res.json({ mangaIds: rows.map((r) => r.manga_id) });
+  const added = {};
+  for (const r of rows) added[r.manga_id] = r.added_at || null;
+  res.json({ mangaIds: rows.map((r) => r.manga_id), added });
 });
 
 app.post('/api/library/:mangaId', requireAuth, (req, res) => {
@@ -383,7 +385,7 @@ app.post('/api/comments', requireAuth, (req, res) => {
   res.json({ ok: true, id });
 });
 
-app.post('/api/comments/:id/vote', requireAuth, (req, res) => {
+app.post('/api/comments/:id/vote', requireAuth, rateLimit({ windowMs: 10 * 60 * 1000, max: 60 }), (req, res) => {
   const vote = parseInt(req.body && req.body.vote, 10);
   if (vote !== 1 && vote !== -1) return res.status(400).json({ error: 'vote must be 1 or -1' });
   if (!db.getComment(req.params.id)) return res.status(404).json({ error: 'Comment not found' });
@@ -397,6 +399,205 @@ app.delete('/api/comments/:id', requireAuth, (req, res) => {
   if (comment.user_id !== req.user.id) return res.status(403).json({ error: 'Only the author can delete this comment' });
   db.deleteComment(comment.id);
   res.json({ ok: true });
+});
+
+// ---------- Shop (Reader Points cosmetics) ----------
+// Prices are enforced here — the client never sends a price. Colors run
+// 1k (common) to 1M (mythic Rainbow); titles scale with coolness.
+const _shopSlug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const _shopTitleFx = (price) => (price >= 300000 ? 'legend' : price >= 50000 ? 'veteran' : price >= 8000 ? 'critic' : '');
+const SHOP_EXTRA_COLORS = [
+  ['Ember Red', '#ff5252', 1000], ['Cherry', '#de3163', 1200], ['Brick', '#b22222', 1200],
+  ['Rust', '#b7410e', 1500], ['Amber', '#ffbf00', 1800], ['Honey', '#eb9605', 1800],
+  ['Lemon', '#fff44f', 2000], ['Lime', '#32cd32', 2000], ['Mint', '#98ff98', 2200],
+  ['Jade', '#00a86b', 2500], ['Teal', '#008080', 2500], ['Sky', '#87ceeb', 2800],
+  ['Azure', '#007fff', 2800], ['Cobalt', '#0047ab', 3000], ['Indigo', '#4b0082', 3000],
+  ['Lilac', '#c8a2c8', 3500], ['Mauve', '#e0b0ff', 3500], ['Rose', '#f33a6a', 4000],
+  ['Coral', '#ff7f50', 4000], ['Salmon', '#fa8072', 4500], ['Peach', '#ffe5b4', 4500],
+  ['Banana', '#ffe135', 5000], ['Blush', '#ffb6c1', 5000], ['Sand', '#c2b280', 5000],
+  ['Scarlet', '#ff2400', 6000], ['Ruby Red', '#e0115f', 7000], ['Wine', '#722f37', 7000],
+  ['Maroon', '#800000', 8000], ['Olive', '#808000', 8000], ['Moss', '#8a9a5b', 9000],
+  ['Forest Green', '#228b22', 9000], ['Pine', '#01796f', 10000], ['Seafoam', '#93e9be', 10000],
+  ['Aqua', '#00ffff', 11000], ['Turquoise', '#40e0d0', 11000], ['Sapphire', '#0f52ba', 12000],
+  ['Navy', '#000080', 12000], ['Midnight Blue', '#191970', 13000], ['Plum', '#dda0dd', 13000],
+  ['Orchid', '#da70d6', 14000], ['Magenta', '#ff00ff', 14000], ['Fuchsia', '#ff77ff', 15000],
+  ['Tangerine', '#f28500', 15000], ['Apricot', '#fbceb1', 16000], ['Copper', '#b87333', 18000],
+  ['Bronze Tone', '#cd7f32', 18000], ['Brass', '#b5a642', 20000], ['Khaki', '#c3b091', 20000],
+  ['Taupe', '#483c32', 22000], ['Slate', '#708090', 22000], ['Charcoal', '#36454f', 25000],
+  ['Onyx', '#353839', 25000], ['Blood Moon', '#7a0c0c', 30000], ['Lava', '#cf1020', 35000],
+  ['Sunset Orange', '#fd5e53', 40000], ['Dusk', '#463547', 40000], ['Dawn', '#f2c38f', 45000],
+  ['Eclipse Purple', '#343148', 45000], ['Storm', '#4f6666', 50000], ['Thunder', '#545863', 50000],
+  ['Lightning', '#e6e200', 55000], ['Glacier', '#78b7c5', 55000], ['Blizzard', '#a3e7fc', 60000],
+  ['Frostbite', '#c8e9e4', 60000], ['Arctic', '#c9e4e8', 65000], ['Tundra', '#a8b5b2', 65000],
+  ['Savannah', '#d9c287', 70000], ['Desert Sand', '#edc9af', 70000], ['Oasis', '#99c199', 75000],
+  ['Lagoon', '#4ecdc4', 75000], ['Reef', '#0fb5ae', 80000], ['Abyss', '#1b2a4a', 80000],
+  ['Phantom Gray', '#6e6e6e', 90000], ['Ghost White', '#f8f8ff', 100000], ['Specter', '#9d9d9d', 100000],
+  ['Sage', '#9caf88', 110000], ['Steel', '#71797e', 110000], ['Bone', '#e3dac9', 120000],
+  ['Ash', '#b2beb5', 120000], ['Champagne', '#f7e7ce', 150000], ['Platinum Tone', '#e5e4e2', 180000],
+  ['Diamond Blue', '#b9f2ff', 200000], ['Crystal', '#a7d8f0', 200000], ['Prism', '#8e7cc3', 220000],
+  ['Aurora', '#78dbe2', 220000], ['Nebula', '#451e8d', 250000], ['Galaxy', '#2d2d7a', 250000],
+  ['Cosmos', '#130f40', 300000], ['Infinity Blue', '#0018a8', 300000], ['Eternity Dark', '#0f0f23', 350000],
+  ['Void Purple', '#2b0a3d', 350000], ['Celestial', '#4997d0', 400000], ['Wisteria', '#c9a0dc', 400000],
+  ['Holy Light', '#f5f5f5', 450000], ['Sacred Gold', '#bc9c22', 450000], ['Starlight', '#fff9e3', 500000],
+  ['Phoenix Fire', '#e25822', 600000], ['Dragonblood', '#8c001a', 650000], ['Titansteel', '#757575', 700000],
+  ['Godslayer', '#2e0854', 750000], ['Kingslayer', '#c0a060', 800000], ['Worldender', '#1a1a2e', 850000],
+  ['Omnipotent', '#ffffff', 900000], ['Solar Flare', '#ffdf00', 950000],
+  ['Candy', 'linear-gradient(90deg,#ff9ff3,#54a0ff)', 50000],
+  ['Mint Chip', 'linear-gradient(90deg,#0d2818,#a3e7a3)', 60000],
+  ['Grape Fizz', 'linear-gradient(90deg,#3a1c71,#d76d77)', 55000],
+  ['Smolder', 'linear-gradient(90deg,#0a0a0a,#ff5252)', 25000],
+  ['Venom', 'linear-gradient(90deg,#1a2f1a,#7fff00)', 70000],
+  ['Bloodwine', 'linear-gradient(90deg,#1a0000,#e0115f)', 80000],
+  ['Frostfire', 'linear-gradient(90deg,#a3e7fc,#ff6b35)', 90000],
+  ['Golden Hour', 'linear-gradient(90deg,#f7971e,#ffd200)', 95000],
+  ['Duskblaze', 'linear-gradient(90deg,#2b1055,#ff7a3d)', 110000],
+  ['Ultraviolet', 'linear-gradient(90deg,#240b36,#c31432)', 130000],
+  ['Siren', 'linear-gradient(90deg,#1a2980,#26d0ce)', 140000],
+  ['Regal Gold', 'linear-gradient(90deg,#4b2e83,#ffd24a)', 150000],
+  ['Rose Gold', 'linear-gradient(90deg,#b76e79,#f7e7ce)', 160000],
+  ['Magma Flow', 'linear-gradient(90deg,#0f0c29,#ff4e50)', 170000],
+  ['Voidwalk', 'linear-gradient(90deg,#0f0c29,#8041c8)', 180000],
+  ['Bloodshadow', 'linear-gradient(135deg,#ff1a1a,#000000)', 120000],
+  ['Crimson Abyss', 'linear-gradient(135deg,#7a0c1e,#050508)', 220000],
+  ['Golden Shadow', 'linear-gradient(135deg,#ffd24a,#1a1206)', 260000],
+  ['Violet Night', 'linear-gradient(135deg,#b16cea,#060312)', 280000],
+  ['Emerald Abyss', 'linear-gradient(135deg,#35d07f,#04120a)', 240000],
+  ['Midnight Ember', 'linear-gradient(135deg,#ff7a3d,#0d0503)', 200000],
+];
+const SHOP_EXTRA_TITLES = [
+  ['Drifter', 1000], ['Stranger', 1200], ['Nomad', 1500], ['Squire', 1800],
+  ['Page', 2000], ['Rascal', 2000], ['Rookie', 2200], ['Trainee', 2200],
+  ['Pupil', 2500], ['Student', 2500], ['Peasant', 2800], ['Commoner', 2800],
+  ['Villager', 3000], ['Fisher', 3000], ['Farmer', 3200], ['Miner', 3200],
+  ['Clerk', 3500], ['Scribe', 3500], ['Bard', 4000], ['Jester', 4000],
+  ['Gambler', 4500], ['Outlaw', 4500], ['Bandit', 5000], ['Acolyte', 5200],
+  ['Scout', 5500], ['Hunter', 6000], ['Ranger', 6500], ['Archer', 6500],
+  ['Swordsman', 7000], ['Lancer', 7000], ['Brawler', 7500], ['Fighter', 7500],
+  ['Warrior', 8000], ['Soldier', 8500], ['Knight', 9000], ['Guardian', 9000],
+  ['Protector', 9500], ['Defender', 9500], ['Warden', 10000], ['Sentinel', 10000],
+  ['Watcher', 11000], ['Seeker', 11000], ['Tracker', 12000], ['Stalker', 13000],
+  ['Raider', 13000], ['Reaver', 14000], ['Slayer', 15000], ['Executioner', 16000],
+  ['Assassin', 18000], ['Shinobi', 18000], ['Ninja', 20000], ['Ronin', 20000],
+  ['Samurai', 22000], ['Duelist', 22000], ['Gladiator', 25000], ['Pit Fighter', 28000],
+  ['Champion', 30000], ['Hero', 35000], ['Prodigy', 35000], ['Genius', 40000],
+  ['Master', 40000], ['Grandmaster', 45000], ['Sage', 45000], ['Mystic', 50000],
+  ['Oracle', 55000], ['Prophet', 55000], ['Seer', 60000], ['Enchanter', 60000],
+  ['Sorcerer', 65000], ['Warlock', 65000], ['Witch', 70000], ['Wizard', 70000],
+  ['Mage', 75000], ['Archmage', 80000], ['Necromancer', 85000], ['Summoner', 85000],
+  ['Tamer', 90000], ['Elementalist', 90000], ['Stormcaller', 95000], ['Frostborn', 95000],
+  ['Firebrand', 100000], ['Thunderlord', 100000], ['Earthshaker', 105000], ['Tidecaller', 105000],
+  ['Windrunner', 110000], ['Starforged', 110000], ['Moonblessed', 115000], ['Sunsworn', 115000],
+  ['Dawnbringer', 120000], ['Paladin', 130000], ['Crusader', 140000], ['Templar', 150000],
+  ['Berserker', 160000], ['Warlord', 180000], ['Conqueror', 200000], ['Destroyer', 220000],
+  ['Annihilator', 250000], ['Overlord', 280000], ['Emperor', 300000], ['Empress', 320000],
+  ['Sovereign', 350000], ['Celestial One', 450000], ['Seraphim', 500000], ['Archangel', 550000],
+  ['Titan Lord', 600000], ['Dragonlord', 650000], ['Phoenix Born', 700000], ['Eternal One', 800000],
+];
+const SHOP_CATALOG = [
+  { id: 'color-crimson', slot: 'color', name: 'Crimson Name', price: 1500, value: '#ff5c5c', desc: 'A sharp red username' },
+  { id: 'color-gold', slot: 'color', name: 'Gold Name', price: 12000, value: '#ffd24a', desc: 'Rich gold username' },
+  { id: 'color-violet', slot: 'color', name: 'Violet Name', price: 45000, value: '#b16cea', desc: 'Deep violet username' },
+  { id: 'color-ocean', slot: 'color', name: 'Ocean Name', price: 60000, value: '#38e1ff', desc: 'Bright cyan username' },
+  { id: 'color-rainbow', slot: 'color', name: 'Rainbow Name', price: 1000000, value: 'rainbow', desc: 'Animated rainbow username' },
+  ...SHOP_EXTRA_COLORS.map(([name, css, price]) => ({ id: 'color-' + _shopSlug(name), slot: 'color', name, price, value: css, desc: 'A unique username color' })),
+  { id: 'title-newbie', slot: 'title', name: 'Newbie', price: 1000, value: 'Newbie', desc: 'A humble little badge' },
+  { id: 'title-regular', slot: 'title', name: 'Regular', price: 2500, value: 'Regular', desc: 'For familiar faces' },
+  { id: 'title-critic', slot: 'title', name: 'Critic', price: 15000, value: 'Critic', fx: 'critic', desc: 'Red-edged comment badge' },
+  { id: 'title-veteran', slot: 'title', name: 'Veteran', price: 80000, value: 'Veteran', fx: 'veteran', desc: 'Gold glowing comment badge' },
+  { id: 'title-legend', slot: 'title', name: 'Legend', price: 500000, value: 'Legend', fx: 'legend', desc: 'Animated shining comment badge' },
+  ...SHOP_EXTRA_TITLES.map(([name, price]) => ({ id: 'title-' + _shopSlug(name), slot: 'title', name, price, value: name, fx: _shopTitleFx(price), desc: 'A title beside your name' })),
+  { id: 'frame-bronze', slot: 'frame', name: 'Bronze Ring', price: 80, value: 'bronze', desc: 'Bronze avatar ring' },
+  { id: 'frame-silver', slot: 'frame', name: 'Silver Ring', price: 200, value: 'silver', desc: 'Silver avatar ring' },
+  { id: 'frame-gold', slot: 'frame', name: 'Gold Ring', price: 400, value: 'gold', desc: 'Gold avatar ring' },
+  { id: 'frame-neon', slot: 'frame', name: 'Neon Pulse', price: 700, value: 'neon', desc: 'Pulsing neon avatar ring' },
+  { id: 'frame-platinum', slot: 'frame', name: 'Platinum Ring', price: 1500, value: 'platinum', desc: 'Platinum avatar ring' },
+  { id: 'frame-diamond', slot: 'frame', name: 'Diamond Ring', price: 5000, value: 'diamond', desc: 'Icy diamond avatar ring' },
+  { id: 'frame-ruby', slot: 'frame', name: 'Ruby Ring', price: 12000, value: 'ruby', desc: 'Blood-red avatar ring' },
+  { id: 'frame-frost', slot: 'frame', name: 'Frost Ring', price: 25000, value: 'frost', desc: 'Frozen avatar ring' },
+  { id: 'frame-magma', slot: 'frame', name: 'Magma Ring', price: 60000, value: 'magma', desc: 'Molten avatar ring' },
+  { id: 'frame-royal', slot: 'frame', name: 'Royal Ring', price: 150000, value: 'royal', desc: 'Regal purple avatar ring' },
+  { id: 'frame-cosmic', slot: 'frame', name: 'Cosmic Ring', price: 400000, value: 'cosmic', desc: 'Starfield avatar ring' },
+  { id: 'frame-void', slot: 'frame', name: 'Void Pulse', price: 750000, value: 'void', desc: 'Pulsing void avatar ring' },
+  { id: 'frame-ribbon', slot: 'frame', name: 'Fae Ribbon', price: 250000, value: 'ribbon', desc: 'Shimmering iridescent ring with sparkles' },
+  { id: 'frame-crest-silver', slot: 'frame', name: 'Silver Crest', price: 300000, value: 'crest-silver', desc: 'Silver crest ring with a gem' },
+  { id: 'frame-crest-gold', slot: 'frame', name: 'Golden Crest', price: 600000, value: 'crest-gold', desc: 'Golden crest ring with a gem' },
+  { id: 'frame-crest-mythic', slot: 'frame', name: 'Mythic Crest', price: 950000, value: 'crest-mythic', desc: 'Pulsing mythic crest ring with a gem' },
+  { id: 'frame-pearl', slot: 'frame', name: 'Pearl String', price: 60000, value: 'pearl', desc: 'Dotted pearl avatar ring' },
+  { id: 'frame-obsidian', slot: 'frame', name: 'Obsidian', price: 90000, value: 'obsidian', desc: 'Dark stone avatar ring' },
+  { id: 'frame-laurel', slot: 'frame', name: 'Laurel', price: 120000, value: 'laurel', desc: 'Champion green-and-gold ring' },
+  { id: 'frame-stormcall', slot: 'frame', name: 'Stormcall', price: 200000, value: 'stormcall', desc: 'Crackling storm avatar ring' },
+  { id: 'frame-crest', slot: 'frame', name: 'Royal Crest', price: 300000, value: 'crest', desc: 'Metallic gold crest ring' },
+  { id: 'frame-bloodmoon', slot: 'frame', name: 'Blood Moon', price: 350000, value: 'bloodmoon', desc: 'Dark-red lunar ring' },
+  { id: 'frame-prismatic', slot: 'frame', name: 'Prismatic', price: 500000, value: 'prismatic', desc: 'Triple rainbow avatar rings' },
+  { id: 'frame-seraph', slot: 'frame', name: 'Seraphim', price: 800000, value: 'seraph', desc: 'Radiant white-gold ring' },
+  { id: 'theme-crimson', slot: 'theme', name: 'Crimson Night', price: 300, value: 'crimson-night', desc: 'Blood-red app theme' },
+  { id: 'theme-ocean', slot: 'theme', name: 'Deep Ocean', price: 300, value: 'deep-ocean', desc: 'Deep-blue app theme' },
+  { id: 'theme-forest', slot: 'theme', name: 'Forest Night', price: 400, value: 'forest-night', desc: 'Deep-green app theme' },
+  { id: 'theme-sunset', slot: 'theme', name: 'Ember Sunset', price: 500, value: 'sunset-ember', desc: 'Burnt-orange app theme' },
+  { id: 'theme-royal', slot: 'theme', name: 'Royal Violet', price: 1000, value: 'royal-violet', desc: 'Regal purple app theme' },
+];
+const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
+function shopStateFor(userId) {
+  const me = userId ? db.findById(userId) : null;
+  const owned = userId ? db.getOwned(userId) : [];
+  const eq = userId ? db.equippedCosmetics(userId) : { name_color: '', title: '', frame: '', theme: '' };
+  return {
+    balance: me ? me.rp || 0 : 0,
+    owned,
+    equipped: eq,
+    catalog: SHOP_CATALOG.map((it) => ({
+      ...it,
+      owned: owned.includes(it.id),
+      equipped: (eq[SHOP_SLOT_COL[it.slot]] || '') === it.value,
+    })),
+  };
+}
+app.get('/api/shop', (req, res) => {
+  const u = currentUser(req);
+  res.json(shopStateFor(u ? u.id : null));
+});
+app.post('/api/shop/buy', requireAuth, (req, res) => {
+  const { id } = req.body || {};
+  const item = SHOP_CATALOG.find((i) => i.id === id);
+  if (!item) return res.status(404).json({ error: 'Unknown item' });
+  try {
+    res.json({ ok: true, ...db.buyCosmetic(req.user.id, item) });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+// Equip an owned item (or unequip the slot with id null). Values always come
+// from the catalog — the client only ever sends ids.
+app.post('/api/shop/equip', requireAuth, (req, res) => {
+  const { slot, id } = req.body || {};
+  const col = SHOP_SLOT_COL[slot];
+  if (!col) return res.status(400).json({ error: 'Unknown slot' });
+  try {
+    if (id == null) return res.json({ ok: true, ...db.setEquipped(req.user.id, col, '') });
+    const item = SHOP_CATALOG.find((i) => i.id === id && i.slot === slot);
+    if (!item) return res.status(404).json({ error: 'Unknown item' });
+    if (!db.getOwned(req.user.id).includes(id)) return res.status(403).json({ error: 'You do not own this yet' });
+    res.json({ ok: true, ...db.setEquipped(req.user.id, col, item.value) });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+
+// Avatar upload via small data-URL (used by the static build, which has no
+// file storage; the multipart upload above stays for the full server).
+app.post('/api/auth/avatar-data', requireAuth, (req, res) => {
+  const m = /^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String((req.body || {}).image || ''));
+  if (!m) return res.status(400).json({ error: 'Attach an image' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (!buf.length || buf.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'Image too large' });
+  const ext = { jpeg: '.jpg', png: '.png', webp: '.webp' }[m[2]];
+  for (const f of fs.readdirSync(AVATARS_DIR)) {
+    if (f.startsWith(`${req.user.id}.`)) fs.rmSync(path.join(AVATARS_DIR, f), { force: true });
+  }
+  fs.writeFileSync(path.join(AVATARS_DIR, `${req.user.id}${ext}`), buf);
+  const avatar = `avatars/${req.user.id}${ext}`;
+  db.setAvatar(req.user.id, avatar);
+  res.json({ ok: true, avatar });
 });
 
 // ---------- Recommendations (reader-curated similar titles) ----------
@@ -452,8 +653,9 @@ const POPULAR_TTL = 60 * 1000;
 app.get('/api/popular', (req, res) => {
   const hit = popularCache.get('popular');
   if (hit && Date.now() - hit.at < POPULAR_TTL) return res.json(hit.data);
-  const data = { data: db.popularMangas(10) };
-  popularCache.set('popular', { data, at: Date.now() });
+  const limit = Math.max(1, Math.min(30, parseInt(req.query.limit, 10) || 10));
+  const data = { data: db.popularMangas(limit) };
+  if (limit === 10) popularCache.set('popular', { data, at: Date.now() });
   res.json(data);
 });
 
@@ -466,8 +668,8 @@ app.get('/api/popular', (req, res) => {
 // those are scraped directly from source sites below (same cheerio-style
 // approach upstream uses, dependency-free).
 // Sources used when the client doesn't pick one. Override with
-// COMICK_SOURCES="mangaread,flamecomics,demonicscans".
-const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,flamecomics')
+// COMICK_SOURCES="mangaread,mangayy,mangasushi,flamecomics".
+const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,mangayy,mangasushi,flamecomics')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 // Client IDs look like "cx:mangaread:<base64url(manga page URL)>": one clean
@@ -639,10 +841,56 @@ const TITLE_TTL = 10 * 60 * 1000;
 async function cachedTitle(source, url) {
   const hit = titleCache.get(url);
   if (hit && Date.now() - hit.at < TITLE_TTL) return hit.data;
-  const data = await scrapeTitle(source, url);
+  const data = source === 'comix' ? await scrapeComixTitle(url) : await scrapeTitle(source, url);
   if (titleCache.size > 500) titleCache.delete(titleCache.keys().next().value);
   titleCache.set(url, { data, at: Date.now() });
   return data;
+}
+
+// Comix title details (same embedded JSON as the homepage feeds, but for one
+// hid plus genres). Chapter images need their private API, so chapters below
+// expose first/latest links opened externally.
+async function scrapeComixTitle(url) {
+  const html = await fetchHtml(url);
+  const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('Comix title data not found');
+  const initial = JSON.parse(m[1]);
+  const q = (initial && initial.queries) || {};
+  const key = Object.keys(q).find((k) => {
+    try { const p = JSON.parse(k); return p[0] === 'manga' && p[1] === 'detail'; } catch { return false; }
+  });
+  const d = key ? q[key] : null;
+  if (!d || !d.title) throw new Error('Comix title data not found');
+  const genres = Array.isArray(d.genres) ? d.genres.map((g) => g.title || g.slug).filter(Boolean) : [];
+  return {
+    title: d.title,
+    cover: (d.poster && (d.poster.large || d.poster.medium)) || '',
+    description: d.synopsis || '',
+    status: d.status || '',
+    type: d.type || '',
+    genres,
+    contentRating: d.contentRating || '',
+    latestChapter: d.latestChapter ?? 0,
+    firstChapterUrl: d.firstChapterUrl ? 'https://comix.to' + d.firstChapterUrl : '',
+    latestChapterUrl: d.latestChapterUrl ? 'https://comix.to' + d.latestChapterUrl : '',
+  };
+}
+async function comixChapters(mangaUrl) {
+  const t = await scrapeComixTitle(mangaUrl);
+  const numOf = (u, fb) => {
+    const n = String(u || '').match(/chapter-(\d+(?:\.\d+)?)/i);
+    return n ? parseFloat(n[1]) : fb;
+  };
+  const out = [];
+  if (t.firstChapterUrl) {
+    out.push({ id: t.firstChapterUrl, number: numOf(t.firstChapterUrl, 1), title: 'Chapter 1', url: t.firstChapterUrl, external: true });
+  }
+  if (t.latestChapterUrl && t.latestChapterUrl !== t.firstChapterUrl) {
+    const n = numOf(t.latestChapterUrl, Number(t.latestChapter) || 0);
+    out.push({ id: t.latestChapterUrl, number: n, title: 'Chapter ' + (n || t.latestChapter || '?'), url: t.latestChapterUrl, external: true });
+  }
+  if (!out.length) throw new Error('No chapters found for this title');
+  return out.sort((a, b) => a.number - b.number);
 }
 
 // Chapter page images. Three strategies, first hit wins:
@@ -682,7 +930,10 @@ const pagesCache = new Map(); // chapterUrl -> { pages, at }
 const PAGES_TTL = 10 * 60 * 1000;
 
 // Chapter list: upstream API first, direct wp-manga AJAX fallback.
+// Comix titles expose first/latest links (opened externally) — chapter images
+// need their private API.
 async function comickChapters(source, mangaUrl) {
+  if (source === 'comix') return comixChapters(mangaUrl);
   try {
     const data = await comickApi('/api/chapters', { method: 'POST', body: { url: mangaUrl, source } });
     const list = (data.chapters || []).map((c) => ({
@@ -839,9 +1090,71 @@ app.get('/api/comick/latest', async (req, res) => {
   }
 });
 
+// ---------- Comix charts (comix.to homepage embeds its feeds as JSON) ----------
+// comix.to is NOT WordPress so extractLatestWp can't read it — but the homepage
+// ships <script id="initial-data"> with trending / most-followed / hot / recent
+// feeds, so one fetch powers all four home rows. Chapter IMAGES live behind
+// their private API, so comix titles expose details + first/latest chapter
+// links (opened externally) rather than in-app reading.
+const comixCache = { data: null, at: 0 };
+const COMIX_TTL = 10 * 60 * 1000;
+function normComixItem(it) {
+  const url = 'https://comix.to' + (it.url || '');
+  const poster = (it.poster && (it.poster.large || it.poster.medium)) || '';
+  return {
+    id: cxEncode('comix', url),
+    source: 'comix',
+    title: it.title || 'Untitled',
+    url,
+    cover: poster,
+    latestChapter: it.latestChapter ?? 0,
+    latestChapterLabel: it.latestChapter != null ? String(it.latestChapter) : '',
+    status: it.status || '',
+    type: it.type || '',
+    rating: it.ratedAvg ?? null,
+    follows: it.followsTotal ?? 0,
+    contentRating: it.contentRating || '',
+  };
+}
+async function fetchComixHome() {
+  if (comixCache.data && Date.now() - comixCache.at < COMIX_TTL) return comixCache.data;
+  const html = await fetchHtml('https://comix.to');
+  const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('Comix homepage data not found');
+  const initial = JSON.parse(m[1]);
+  const q = (initial && initial.queries) || {};
+  const pick = (pred) => {
+    const key = Object.keys(q).find((k) => {
+      try { return pred(JSON.parse(k)); } catch { return false; }
+    });
+    let arr = key ? q[key] : [];
+    // "top" feeds are bare arrays; "list" feeds are { items, meta } objects.
+    if (arr && !Array.isArray(arr)) arr = arr.items || arr.data || [];
+    return (Array.isArray(arr) ? arr : []).map(normComixItem);
+  };
+  const data = {
+    trending: pick((p) => p[0] === 'manga' && p[1] === 'top' && p[2] && p[2].type === 'trending'),
+    follows: pick((p) => p[0] === 'manga' && p[1] === 'top' && p[2] && p[2].type === 'follows'),
+    hot: pick((p) => p[0] === 'manga' && p[1] === 'list' && p[2] && p[2].scope === 'hot'),
+    recent: pick((p) => p[0] === 'manga' && p[1] === 'list' && p[2] && p[2].order && p[2].order.created_at === 'desc'),
+  };
+  if (!data.trending.length && !data.follows.length && !data.hot.length && !data.recent.length) {
+    throw new Error('Comix feeds came back empty');
+  }
+  comixCache.data = data;
+  comixCache.at = Date.now();
+  return data;
+}
+app.get('/api/comix/home', async (req, res) => {
+  try {
+    res.json({ data: await fetchComixHome() });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // Genre menu, scraped from the source homepage nav (?source=mangaread).
-// Falls back to genres seen in cached titles, then a curated list.
-const genresCache = new Map(); // source -> { data, at }
+// Falls back to genres seen in cached titles, then a curated list.const genresCache = new Map(); // source -> { data, at }
 const GENRES_TTL = 3600 * 1000;
 const FALLBACK_GENRES = ['action', 'adventure', 'comedy', 'drama', 'fantasy', 'harem', 'historical', 'horror', 'isekai', 'martial-arts', 'mature', 'mecha', 'mystery', 'psychological', 'romance', 'school-life', 'sci-fi', 'seinen', 'shoujo', 'shounen', 'slice-of-life', 'sports', 'supernatural', 'tragedy'];
 const prettySlug = (s) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
@@ -890,8 +1203,9 @@ app.get('/api/comick/genre', async (req, res) => {
     const source = String(req.query.source || 'mangaread').trim().toLowerCase();
     const genre = String(req.query.genre || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (!genre) return res.status(400).json({ error: 'genre is required' });
-    const page = Math.max(1, Math.min(20, parseInt(req.query.page || '1', 10) || 1));
-    const key = `${source}:${genre}:${page}`;
+    const page = Math.max(1, Math.min(50, parseInt(req.query.page || '1', 10) || 1));
+    const enrich = req.query.enrich === '1';
+    const key = `${source}:${genre}:${page}:${enrich ? 'full' : 'base'}`;
     const hit = genreCache.get(key);
     if (hit && Date.now() - hit.at < GENRE_TTL) return res.json(hit.data);
     const base = (await comickSourceBase(source)) || 'https://www.mangaread.org';
@@ -899,7 +1213,13 @@ app.get('/api/comick/genre', async (req, res) => {
     const html = await fetchHtml(url);
     const items = extractLatestWp(html, url);
     if (!items.length) throw new Error('No titles in this genre on this source');
-    const data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })), page };
+    let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })), page };
+    // Enrichment attaches per-title status/type so filtered views (home
+    // Updates) can filter client-side. Capped so one page can't stall.
+    if (enrich) {
+      const slice = data.data.slice(0, 15);
+      data = { data: await enrichItems(source, slice).then((m) => slice.map((it) => ({ ...it, ...(m.get(it.id) || {}) }))), page };
+    }
     genreCache.set(key, { data, at: Date.now() });
     res.json(data);
   } catch (e) {
@@ -1160,6 +1480,14 @@ app.get('/api/img', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: 'Image fetch failed: ' + e.message });
   }
+});
+
+// SPA fallback: deep pretty URLs (/title/…, /reader/…/…) load the shell and
+// the in-app router takes over from the path.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+  if (/\/[^/]*\.[^/]*$/.test(req.path)) return next();
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ---------- Start ----------

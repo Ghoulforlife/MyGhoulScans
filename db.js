@@ -118,6 +118,22 @@ try {
   db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 } catch {}
 
+// Column added later (Reader Points balance; floor 0, awarded via comment votes)
+try {
+  db.exec('ALTER TABLE users ADD COLUMN rp INTEGER NOT NULL DEFAULT 0');
+} catch {}
+
+// Columns added later (shop cosmetics; owned = JSON array of item ids)
+for (const ddl of [
+  'ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN frame TEXT NOT NULL DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT \'\'',
+  'ALTER TABLE users ADD COLUMN owned TEXT NOT NULL DEFAULT \'[]\'',
+]) {
+  try { db.exec(ddl); } catch {}
+}
+
 // Unique usernames (case-insensitive). Rename pre-existing dupes first so the
 // index build can never fail on old databases.
 try {
@@ -172,7 +188,7 @@ function linkGoogle(userId, googleSub) {
 }
 
 function findById(id) {
-  return db.prepare('SELECT id, email, display_name, google_sub, avatar, created_at FROM users WHERE id = ?').get(id);
+  return db.prepare('SELECT id, email, display_name, google_sub, avatar, rp, name_color, title, frame, theme, owned, created_at FROM users WHERE id = ?').get(id);
 }
 
 // ---------- Account settings ----------
@@ -249,7 +265,7 @@ function removeFollow(userId, mangaId) {
 }
 
 function listFollows(userId) {
-  return db.prepare('SELECT manga_id FROM follows WHERE user_id = ? ORDER BY added_at DESC').all(userId);
+  return db.prepare('SELECT manga_id, added_at FROM follows WHERE user_id = ? ORDER BY added_at DESC').all(userId);
 }
 
 function isFollowed(userId, mangaId) {
@@ -274,7 +290,7 @@ function getProgress(userId, mangaId) {
 }
 
 function listProgress(userId) {
-  return db.prepare('SELECT manga_id, chapter_id, page, chapter_label FROM progress WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
+  return db.prepare('SELECT manga_id, chapter_id, page, chapter_label, updated_at FROM progress WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
 }
 
 function deleteProgress(userId, mangaId) {
@@ -317,13 +333,24 @@ function getComment(id) {
 }
 
 function deleteComment(id) {
+  // Retract RP the comment earned (likes/dislikes from other readers only —
+  // self-votes never awarded any), so delete-and-repost can't duplicate points.
+  const c = db.prepare('SELECT user_id FROM comments WHERE id = ?').get(id);
+  if (c) {
+    const row = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ? AND vote = 1 AND user_id != ?) AS likes,
+        (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ? AND vote = -1 AND user_id != ?) AS dislikes
+    `).get(id, c.user_id, id, c.user_id);
+    adjustRp(c.user_id, -((row.likes || 0) * RP_LIKE + (row.dislikes || 0) * RP_DISLIKE));
+  }
   db.prepare('DELETE FROM comments WHERE id = ?').run(id);
 }
 
 function listComments(chapterId, userId) {
   return db.prepare(`
     SELECT c.id, c.manga_id, c.chapter_id, c.body, c.pinned, c.created_at,
-           u.display_name,
+           u.display_name, u.name_color, u.title, u.frame,
            (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.vote = 1)   AS likes,
            (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.vote = -1)  AS dislikes,
            (SELECT v.vote FROM comment_votes v WHERE v.comment_id = c.id AND v.user_id = ?)  AS my_vote
@@ -339,7 +366,10 @@ function listCommentsBlockedCount(chapterId) {
 }
 
 function castVote(userId, commentId, vote) {
+  const comment = db.prepare('SELECT user_id FROM comments WHERE id = ?').get(commentId);
+  const authorId = comment ? comment.user_id : null;
   const existing = db.prepare('SELECT * FROM comment_votes WHERE user_id = ? AND comment_id = ?').get(userId, commentId);
+  const oldVote = existing ? existing.vote : 0;
   if (existing && existing.vote === vote) {
     db.prepare('DELETE FROM comment_votes WHERE user_id = ? AND comment_id = ?').run(userId, commentId);
   } else {
@@ -362,13 +392,89 @@ function castVote(userId, commentId, vote) {
     db.prepare('UPDATE comments SET pinned = 1 WHERE id = ?').run(commentId);
   }
   const myVote = db.prepare('SELECT vote FROM comment_votes WHERE user_id = ? AND comment_id = ?').get(userId, commentId);
+  const newVote = myVote ? myVote.vote : 0;
+  // Reader Points follow the vote transition (self-votes never award RP,
+  // and brand-new voter accounts don't either).
+  if (authorId && authorId !== userId && newVote !== oldVote) {
+    const voter = db.prepare('SELECT created_at FROM users WHERE id = ?').get(userId);
+    if (voterOldEnough(voter && voter.created_at)) {
+      adjustRp(authorId, rpDeltaForVote(oldVote, newVote));
+    }
+  }
   return {
     likes,
     dislikes,
-    myVote: myVote ? myVote.vote : 0,
+    myVote: newVote,
     pinned: !!db.prepare('SELECT pinned FROM comments WHERE id = ?').get(commentId).pinned,
     blocked: !!db.prepare('SELECT blocked FROM comments WHERE id = ?').get(commentId).blocked,
   };
+}
+
+// ---------- Reader Points (RP) ----------
+// A like on your comment awards +2 RP, a dislike takes -1 RP (floored at 0).
+// Un-votes and vote switches reverse/adjust by the difference, so toggling
+// a vote back and forth can never farm points.
+const RP_LIKE = 2;
+const RP_DISLIKE = -1;
+function rpVoteValue(v) {
+  return v === 1 ? RP_LIKE : v === -1 ? RP_DISLIKE : 0;
+}
+function rpDeltaForVote(oldVote, newVote) {
+  return rpVoteValue(newVote) - rpVoteValue(oldVote);
+}
+// Anti-farm: votes only award RP once the voter's account is a day old,
+// so mass-created throwaway accounts can't mint points.
+const VOTE_RP_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+function voterOldEnough(createdAt) {
+  const t = Date.parse(String(createdAt || '').replace(' ', 'T'));
+  return !isNaN(t) && Date.now() - t >= VOTE_RP_MIN_AGE_MS;
+}
+function adjustRp(userId, delta) {
+  if (!delta) return;
+  db.prepare('UPDATE users SET rp = MAX(0, rp + ?) WHERE id = ?').run(delta, userId);
+}
+function getRp(userId) {
+  const row = db.prepare('SELECT rp FROM users WHERE id = ?').get(userId);
+  return row ? row.rp || 0 : 0;
+}
+
+// ---------- Shop (cosmetics inventory) ----------
+const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
+function getOwned(userId) {
+  try {
+    const row = db.prepare('SELECT owned FROM users WHERE id = ?').get(userId);
+    const arr = JSON.parse(row && row.owned ? row.owned : '[]');
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+  } catch { return []; }
+}
+function equippedCosmetics(userId) {
+  const r = db.prepare('SELECT name_color, title, frame, theme FROM users WHERE id = ?').get(userId) || {};
+  return { name_color: r.name_color || '', title: r.title || '', frame: r.frame || '', theme: r.theme || '' };
+}
+// Buy (or re-equip) a catalog item. The caller validates id/price against
+// the catalog first — this only moves points and flips the equipped slot.
+function buyCosmetic(userId, item) {
+  const col = SHOP_SLOT_COL[item.slot];
+  if (!col) { const e = new Error('Unknown shop item'); e.status = 400; throw e; }
+  const owned = getOwned(userId);
+  if (!owned.includes(item.id)) {
+    if (getRp(userId) < item.price) { const e = new Error('Not enough RP — earn more from comment likes'); e.status = 402; throw e; }
+    owned.push(item.id);
+    db.prepare('UPDATE users SET rp = rp - ?, owned = ? WHERE id = ?').run(item.price, JSON.stringify(owned), userId);
+  }
+  db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(item.value, userId);
+  return { rp: getRp(userId), owned, equipped: equippedCosmetics(userId) };
+}
+// Equip an owned item (or unequip with value '') in a cosmetic slot.
+// Only code paths holding catalog-validated values may call this.
+function setEquipped(userId, col, value) {
+  if (!['name_color', 'title', 'frame', 'theme'].includes(col)) {
+    const e = new Error('Unknown slot');
+    e.status = 400;
+    throw e;
+  }
+  db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(value || '', userId);
+  return { rp: getRp(userId), owned: getOwned(userId), equipped: equippedCosmetics(userId) };
 }
 
 // ---------- Chapter reads ----------
@@ -507,6 +613,16 @@ module.exports = {
   listComments,
   listCommentsBlockedCount,
   castVote,
+  RP_LIKE,
+  RP_DISLIKE,
+  rpDeltaForVote,
+  adjustRp,
+  getRp,
+  SHOP_SLOT_COL,
+  getOwned,
+  equippedCosmetics,
+  buyCosmetic,
+  setEquipped,
   addRec,
   removeRec,
   listRecs,
