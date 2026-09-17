@@ -2346,9 +2346,10 @@ async function renderHome() {
   if (sec.comix && (document.getElementById('comixTrendRow') || document.getElementById('comixFollowRow') || document.getElementById('comixHotRow'))) {
     jobs.push((async () => {
       let feeds = null;
+      let comixErr = '';
       try {
         feeds = (await api('/api/comix/home')).data || null;
-      } catch { feeds = null; }
+      } catch (e) { feeds = null; comixErr = (e && e.message) || 'load failed'; }
       const paintRanked = (rowId, items) => {
         const row = document.getElementById(rowId);
         if (!row) return;
@@ -2360,7 +2361,10 @@ async function renderHome() {
           fresh.push(m);
           if (fresh.length >= 18) break;
         }
-        if (!fresh.length) { row.innerHTML = '<div class="centered small">Nothing here yet</div>'; return; }
+        if (!fresh.length) {
+          row.innerHTML = `<div class="centered small">${!feeds ? `Could not load Comix charts (${esc(comixErr)})` : 'Nothing here yet'}</div>`;
+          return;
+        }
         fresh.forEach((m) => { if (hasNewChapters(m, progressMap)) m._new = true; });
         row.innerHTML = fresh.map((m, i) => mangaCard(m, { h: true, rank: i + 1 })).join('');
         wireCards(row);

@@ -744,6 +744,44 @@ async function fetchHtml(url, referer) {
   throw lastErr || new Error('Fetch failed');
 }
 
+// comix.to sits behind bot filtering that 404s bare datacenter requests, so
+// comix pages are fetched with full browser-navigation headers. Used ONLY for
+// comix.to (WP scrapers keep the plain fetch above).
+async function fetchComixHtml(url, referer) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': referer ? 'same-origin' : 'none',
+          'Sec-Fetch-User': '?1',
+          'sec-ch-ua': '"Chromium";v="126", "Google Chrome";v="126", "Not-A.Brand";v="99"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          ...(referer ? { Referer: referer } : {}),
+        },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!res.ok) {
+        const e = new Error(`Source ${res.status} for ${String(url).split('?')[0]}`);
+        e.status = res.status;
+        throw e;
+      }
+      return (await res.text()).slice(0, 4 * 1024 * 1024);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 1) await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('Fetch failed');
+}
+
 function decodeEntities(s) {
   return String(s || '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -851,7 +889,7 @@ async function cachedTitle(source, url) {
 // hid plus genres). Chapter images need their private API, so chapters below
 // expose first/latest links opened externally.
 async function scrapeComixTitle(url) {
-  const html = await fetchHtml(url);
+  const html = await fetchComixHtml(url, 'https://comix.to/');
   const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
   if (!m) throw new Error('Comix title data not found');
   const initial = JSON.parse(m[1]);
@@ -1118,7 +1156,7 @@ function normComixItem(it) {
 }
 async function fetchComixHome() {
   if (comixCache.data && Date.now() - comixCache.at < COMIX_TTL) return comixCache.data;
-  const html = await fetchHtml('https://comix.to');
+  const html = await fetchComixHtml('https://comix.to');
   const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
   if (!m) throw new Error('Comix homepage data not found');
   const initial = JSON.parse(m[1]);
