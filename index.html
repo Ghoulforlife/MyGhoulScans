@@ -1377,7 +1377,7 @@ function coverUrl(data) {
 // through our image proxy like chapter pages.
 function proxiedCover(data) {
   const c = coverUrl(data);
-  return c || '';
+  return c ? `${API_BASE}/img?u=${encodeURIComponent(c)}&ref=${encodeURIComponent((data && data.url) || '')}` : '';
 }
 
 function latestLabelOf(data) {
@@ -2340,7 +2340,10 @@ async function renderHome() {
     wireCards(row);
   };
   const latestUrl = (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`;
-  const genreUrl = (s, slug, page) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${page}${needFilter ? '&enrich=1' : ''}`;
+  // Type rows skip enrichment: one light request per source instead of ~16,
+  // so a full home load can't throttle itself into empty rows. Mature
+  // filtering still applies wherever genre data is present.
+  const genreUrl = (s, slug, page) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${page}`;
   const jobs = [];
   if (sec.latest) {
     jobs.push(fanout(MAJOR_SOURCES, (s) => latestUrl(s))
@@ -2856,7 +2859,7 @@ async function renderTitle(mangaId) {
 
     view.innerHTML = `
       <div class="title-hero">
-        ${manga.cover ? `<img src="${esc(manga.cover)}" alt="" referrerpolicy="no-referrer" />` : '<div class="cover"></div>'}
+        ${manga.cover ? `<img src="${API_BASE}/img?u=${encodeURIComponent(manga.cover)}&ref=${encodeURIComponent(manga.url || '')}" alt="" referrerpolicy="no-referrer" />` : '<div class="cover"></div>'}
         <div class="title-info">
           <h1>${esc(titleOf(manga))}</h1>
           <div class="tagline">from ${esc(manga.source || 'the source')}</div>
@@ -3267,7 +3270,7 @@ async function renderReader(mangaId, chapterId, startPage) {
     let cid = null, urls = [];
     for (let i = idx; i < feed.length && i < idx + 5; i++) {
       try {
-        const pg = await api(`/api/comick/pages?url=${encodeURIComponent(feed[i].url)}&raw=1`);
+        const pg = await api(`/api/comick/pages?url=${encodeURIComponent(feed[i].url)}`);
         if (pg.data && pg.data.length) { cid = feed[i].url; urls = pg.data; idx = i; break; }
       } catch (e) {
         if (e.status && e.status < 500 && e.status !== 404 && e.status !== 502) throw e;
@@ -3306,7 +3309,7 @@ async function renderReader(mangaId, chapterId, startPage) {
     const cur = chapters[idx] || {};
     DATA = {
       mangaTitle,
-      coverSrc: titleInfo.cover || '',
+      coverSrc: titleInfo.cover ? `${API_BASE}/img?u=${encodeURIComponent(titleInfo.cover)}&ref=${encodeURIComponent(titleInfo.url || '')}` : '',
       chapters, idx, urls, altUrls: [],
       updatedText: titleInfo.source ? `via ${titleInfo.source}` : '',
       infoHtml: `You are reading <b>Chapter ${esc(cur.num || '?')} of ${esc(mangaTitle)}</b> on <b>MyGhoulScans</b>.`
@@ -4756,7 +4759,7 @@ async function renderPopular() {
       const m = byId.get(row.id);
       if (!m && !s) return '';
       const rawImg = m ? coverUrl(m) : s.cover;
-      const img = rawImg;
+      const img = m && rawImg ? `${API_BASE}/img?u=${encodeURIComponent(rawImg)}&ref=${encodeURIComponent((m && m.url) || '')}` : rawImg;
       const name = m ? titleOf(m) : s.title;
       const w = Math.round((row.n / max) * 100);
       return `
