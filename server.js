@@ -326,6 +326,8 @@ app.post('/api/progress/:mangaId', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'chapterId (string) and page (number) are required' });
   }
   db.saveProgress(req.user.id, req.params.mangaId, chapterId, page, chapterLabel);
+  // Reading-time heartbeat for the hours leaderboard (capped deltas).
+  try { db.trackReadingTime(req.user.id); } catch {}
   res.json({ ok: true });
 });
 
@@ -659,6 +661,21 @@ app.get('/api/popular', (req, res) => {
   res.json(data);
 });
 
+// Community leaderboard (public): top readers by RP, reading hours,
+// bookmarks, and likes/dislikes received on their comments.
+const LB_BOARDS = ['rp', 'hours', 'bookmarks', 'likes', 'dislikes'];
+const lbCache = new Map(); // by -> { data, at }
+const LB_TTL = 60 * 1000;
+app.get('/api/leaderboard', (req, res) => {
+  const by = String(req.query.by || 'rp');
+  if (!LB_BOARDS.includes(by)) return res.status(400).json({ error: 'unknown board' });
+  const hit = lbCache.get(by);
+  if (hit && Date.now() - hit.at < LB_TTL) return res.json(hit.data);
+  const data = { by, data: db.leaderboard(by) };
+  lbCache.set(by, { data, at: Date.now() });
+  res.json(data);
+});
+
 // ---------- Comick source API ----------
 // Upstream scraper API (search + chapter lists), proxied server-side exactly
 // like MangaDex was: the browser only talks to us. Set COMICK_API_BASE to a
@@ -838,6 +855,22 @@ function metaContent(html, prop) {
   return c ? decodeEntities(c[1]) : '';
 }
 
+// Source synopses ship with credit boilerplate + raw URLs
+// ("**Original Webtoon:** [KakaoPage] (https://…), [Daum] (https://…)").
+// Readers only want the story text — strip links, keep words, never emit <a>.
+function cleanSynopsis(s) {
+  let t = String(s || '');
+  t = t.replace(/\[([^\]]{1,120})\]\((https?:[^)\s]{1,500})\)/gi, '$1');
+  t = t.replace(/https?:\/\/[^\s)'"]+/gi, '');
+  t = t.replace(/\*\*/g, '');
+  t = t.replace(/\[(KakaoPage|Daum|Kakao Webtoon|Webtoon|Original Webtoon)[^\]]*\]/gi, '');
+  t = t.replace(/\(\s*\)/g, '');
+  t = t.replace(/"?\*{0,2}"?Original Webtoon"?:?\*{0,2}"?\s*,?/gi, '');
+  t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').replace(/\s+([,.!?;:])/g, '$1').trim();
+  t = t.replace(/,\s*,/g, ',').replace(/\(\s*,/, '(').replace(/,\s*\)/, ')').replace(/\(\s*\)/g, '').trim();
+  return t.slice(0, 1500);
+}
+
 // Title details: og: tags first (work on every theme incl. Next.js sites),
 // then wp-manga specifics (status, genres, long description).
 async function scrapeTitle(source, url) {
@@ -876,7 +909,7 @@ async function scrapeTitle(source, url) {
       if (d) description = decodeEntities(d[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 1500);
     }
   }
-  return { title: title || 'Untitled', cover, description, status, type, genres };
+  return { title: title || 'Untitled', cover, description: cleanSynopsis(description), status, type, genres };
 }
 const titleCache = new Map(); // url -> { data, at }
 const TITLE_TTL = 10 * 60 * 1000;
@@ -908,7 +941,7 @@ async function scrapeComixTitle(url) {
   return {
     title: d.title,
     cover: (d.poster && (d.poster.large || d.poster.medium)) || '',
-    description: d.synopsis || '',
+    description: cleanSynopsis(d.synopsis || ''),
     status: d.status || '',
     type: d.type || '',
     genres,
@@ -920,7 +953,7 @@ async function scrapeComixTitle(url) {
   } catch (e) {
     const snap = comixSnapshot && comixSnapshot.titles;
     const hit = snap && snap[url];
-    if (hit) return hit;
+    if (hit) return { ...hit, description: cleanSynopsis(hit.description || '') };
     throw e;
   }
 }

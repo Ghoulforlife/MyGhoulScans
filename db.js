@@ -123,6 +123,15 @@ try {
   db.exec('ALTER TABLE users ADD COLUMN rp INTEGER NOT NULL DEFAULT 0');
 } catch {}
 
+// Columns added later (reading-time tracking for the hours leaderboard:
+// page-turn heartbeats accumulate capped deltas)
+try {
+  db.exec('ALTER TABLE users ADD COLUMN read_seconds INTEGER NOT NULL DEFAULT 0');
+} catch {}
+try {
+  db.exec('ALTER TABLE users ADD COLUMN last_read_at TEXT');
+} catch {}
+
 // Columns added later (shop cosmetics; owned = JSON array of item ids)
 for (const ddl of [
   'ALTER TABLE users ADD COLUMN name_color TEXT NOT NULL DEFAULT \'\'',
@@ -214,6 +223,37 @@ function userStats(userId) {
   const comments = db.prepare('SELECT COUNT(*) AS n FROM comments WHERE user_id = ? AND blocked = 0').get(userId).n;
   const published = db.prepare('SELECT COUNT(*) AS n FROM originals_series WHERE user_id = ?').get(userId).n;
   return { library, chapters, comments, published };
+}
+
+// Reading-time heartbeat: page turns arrive seconds apart while actively
+// reading; idle gaps are capped so an open tab can't farm hours. Returns
+// nothing — failures must never break progress saving (caller wraps in try).
+function trackReadingTime(userId) {
+  const me = db.prepare('SELECT read_seconds, last_read_at FROM users WHERE id = ?').get(userId);
+  if (!me) return;
+  const last = me.last_read_at ? Date.parse(String(me.last_read_at).replace(' ', 'T') + 'Z') : 0;
+  const now = Date.now();
+  const add = last && now - last < 5 * 60 * 1000 ? Math.max(1, Math.floor((now - last) / 1000)) : 20;
+  db.prepare('UPDATE users SET read_seconds = COALESCE(read_seconds,0) + ?, last_read_at = datetime(\'now\') WHERE id = ?').run(add, userId);
+}
+
+const LB_USER_COLS = 'u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame';
+// Community leaderboards (display names only — never emails). Only users
+// with a positive score appear.
+function leaderboard(by) {
+  if (by === 'hours') {
+    return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.read_seconds,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+  }
+  if (by === 'bookmarks') {
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(f.manga_id) AS value FROM users u JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+  }
+  if (by === 'likes') {
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+  }
+  if (by === 'dislikes') {
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+  }
+  return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.rp,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
 }
 
 function ownedOriginalSeries(userId) {
@@ -589,6 +629,8 @@ module.exports = {
   displayNameTaken,
   updatePassword,
   userStats,
+  trackReadingTime,
+  leaderboard,
   ownedOriginalSeries,
   deleteUserAccount,
   createSession,
