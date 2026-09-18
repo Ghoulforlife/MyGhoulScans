@@ -3,22 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MyGhoulScans</title>
+  <title>MyGhoulScans — Read Manga, Manhwa & Manhua Free</title>
+  <meta name="description" content="MyGhoulScans is a free, ad-free manga reader. Read manga, manhwa and manhua online with bookmark sync, continue reading, comments and a reader-points shop." />
+  <meta name="theme-color" content="#0e0e12" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="MyGhoulScans" />
+  <meta property="og:title" content="MyGhoulScans — Read Manga, Manhwa & Manhua Free" />
+  <meta property="og:description" content="Free, ad-free manga reader with library sync, continue reading, comments and reader rewards." />
+  <meta property="og:url" content="https://ghoulforlife.github.io/MyGhoulScans/" />
+  <link rel="canonical" href="https://ghoulforlife.github.io/MyGhoulScans/" />
   <link rel="icon" href="/assets/chibi.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&family=Josefin+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <script>
+    <script>
+    try {
+      // Deep pretty link restored by 404.html (or a server fallback): apply
+      // it before the app boots so the first route is already correct.
+      var _dl = sessionStorage.getItem('mgs-deep-link');
+      if (_dl) {
+        sessionStorage.removeItem('mgs-deep-link');
+        history.replaceState(null, '', _dl);
+      }
+    } catch (e) {}
     try {
       var _p = JSON.parse(localStorage.getItem('mgs_settings') || '{}');
-      document.documentElement.setAttribute('data-theme', _p.mode === 'light' ? 'light' : 'dark');
+      var _m = (_p && _p.mode) || 'dark';
+      document.documentElement.setAttribute('data-theme', (_m === 'light' || _m === 'dark' || _m === 'crimson-night' || _m === 'deep-ocean' || _m === 'forest-night' || _m === 'sunset-ember' || _m === 'royal-violet') ? _m : 'dark');
     } catch (e) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
   </script>
-  <link rel="stylesheet" href="/styles.css?v=52" />
+  <link rel="stylesheet" href="/styles.css?v=63" />
 </head>
 <body>
+  <div id="discordBanner">Join our <a href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Discord</a> for support and discussions <a class="discord-banner-btn" href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Join Discord</a></div>
   <header id="topbar">
     <a id="logo" href="#/">
       <img id="logoImg" src="/assets/chibi.png" alt="MyGhoulScans" />
@@ -34,7 +53,10 @@
       </div>
       <a href="#/library">My Library</a>
       <a href="#/popular">Popular</a>
+      <a href="#/leaderboard">Leaderboard</a>
+      <a href="#/shop">Shop</a>
       <a href="#/originals">Originals</a>
+      <a class="discord-nav-btn" href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Join Discord</a>
     </nav>
     <button id="settingsBtn" class="icon-btn" title="Settings">&#9881;</button>
     <span id="authArea"></span>
@@ -47,7 +69,10 @@
     <a href="#/">Home</a>
     <a href="#/library">My Library</a>
     <a href="#/popular">Popular</a>
+    <a href="#/leaderboard">Leaderboard</a>
+    <a href="#/shop">Shop</a>
     <a href="#/originals">Originals</a>
+    <a href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Join Discord</a>
     <button id="mmSettings">Settings</button>
   </div>
   </header>
@@ -61,6 +86,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=59"></script>
+  <script src="/app.js?v=92"></script>
 </body>
 </html>

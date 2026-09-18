@@ -84,10 +84,7 @@ js = replaceOnce(js, `        body: JSON.stringify(signup ? { email, password, d
       setToken(_authRes.token || null);
       closeModal();`, 'auth token capture');
 
-// 4. Logout + account-delete clear the token.
-js = replaceOnce(js, `  await wfetch('/api/auth/logout', { method: 'POST' });`,
-  `  await wfetch('/api/auth/logout', { method: 'POST' });
-  setToken(null);`, 'logout token clear');
+// 4. Account-delete clears the token (logout clears it explicitly itself).
 js = replaceOnce(js, `      currentUser = null;
       refreshAuth();
       toast('Account deleted');`,
@@ -107,19 +104,25 @@ html = html.split('<a href="#/originals">Originals</a>').join('');
 // 7. Custom avatars need file storage — hide the change button (generated icons stay).
 js = replaceOnce(js, `<label class="btn ghost" for="acctFile">Change picture</label>`, ``, 'avatar button hide');
 
+// 7b. ...but the data-URL picker works everywhere: unhide it on static.
+js = replaceOnce(js, `<button class="btn ghost" id="acctPicStatic" hidden>Change picture</button>`,
+  `<button class="btn ghost" id="acctPicStatic">Change picture</button>`, 'static avatar unhide');
+
 // 8. Generated avatar via worker (not same-origin /api on Pages).
 js = replaceOnce(js, 'return `/api/avatar/${u.id}.svg`;', 'return `${API_BASE}/auth/avatar/${u.id}.svg`;', 'avatar url');
 
-// 9. Images load cross-origin straight from source CDNs here (no /api/img origin).
-js = replaceOnce(js, 'return c ? `/api/img?u=${encodeURIComponent(c)}` : \'\';', `return c || '';`, 'proxiedCover');
+// 9. Static has no same-origin /api/img — route covers + chapter pages via
+// the worker proxy (it also defeats source hotlink protection with Referer).
+js = replaceOnce(js, 'return c ? `/api/img?u=${encodeURIComponent(c)}` : \'\';', 'return c ? `${API_BASE}/img?u=${encodeURIComponent(c)}&ref=${encodeURIComponent((data && data.url) || \'\')}` : \'\';', 'proxiedCover');
 js = replaceOnce(js, 'coverSrc: titleInfo.cover ? `/api/img?u=${encodeURIComponent(titleInfo.cover)}` : \'\',',
-  'coverSrc: titleInfo.cover || \'\',', 'reader cover');
+  'coverSrc: titleInfo.cover ? `${API_BASE}/img?u=${encodeURIComponent(titleInfo.cover)}&ref=${encodeURIComponent(titleInfo.url || \'\')}` : \'\',', 'reader cover');
 js = replaceOnce(js, 'const img = m && rawImg ? `/api/img?u=${encodeURIComponent(rawImg)}` : rawImg;',
-  'const img = rawImg;', 'popular cover');
+  'const img = m && rawImg ? `${API_BASE}/img?u=${encodeURIComponent(rawImg)}&ref=${encodeURIComponent((m && m.url) || \'\')}` : rawImg;', 'popular cover');
 js = replaceOnce(js, '<img src="/api/img?u=${encodeURIComponent(manga.cover)}"',
-  '<img src="${esc(manga.cover)}"', 'title hero cover');
-js = replaceOnce(js, 'const pg = await api(`/api/comick/pages?url=${encodeURIComponent(feed[i].url)}`);',
-  'const pg = await api(`/api/comick/pages?url=${encodeURIComponent(feed[i].url)}&raw=1`);', 'pages raw');
+  '<img src="${API_BASE}/img?u=${encodeURIComponent(manga.cover)}&ref=${encodeURIComponent(manga.url || \'\')}"', 'title hero cover');
+// NOTE: chapter pages stay worker-proxied (no &raw=1): shapePages already
+// returns absolute worker /img URLs with ref, which hotlink-protected hosts
+// require. Previous raw-direct builds broke those images.
 
 // 10. Logo/favicon → inline data URI (no /assets origin on Pages).
 js = js.split('/assets/chibi.png').join(chibiUri);

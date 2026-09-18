@@ -42,6 +42,23 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Titles sometimes arrive with credit boilerplate + raw URLs in the synopsis
+// ("**Original Webtoon:** [KakaoPage] (https://…), [Daum] (https://…)").
+// Show just the story text — no links, no URLs (server cleans too; this
+// covers cached/snapshot responses).
+function cleanDesc(s) {
+  let t = String(s ?? '');
+  t = t.replace(/\[([^\]]{1,120})\]\((https?:[^)\s]{1,500})\)/gi, '$1');
+  t = t.replace(/https?:\/\/[^\s)'"]+/gi, '');
+  t = t.replace(/\*\*/g, '');
+  t = t.replace(/\[(KakaoPage|Daum|Kakao Webtoon|Webtoon|Original Webtoon)[^\]]*\]/gi, '');
+  t = t.replace(/\(\s*\)/g, '');
+  t = t.replace(/"?\*{0,2}"?Original Webtoon"?:?\*{0,2}"?\s*,?/gi, '');
+  t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').replace(/\s+([,.!?;:])/g, '$1').trim();
+  t = t.replace(/,\s*,/g, ',').replace(/\(\s*,/, '(').replace(/,\s*\)/, ')').replace(/\(\s*\)/g, '').trim();
+  return t.slice(0, 1500);
+}
+
 const MUTE = { ongoing: 'ongoing', completed: 'completed', hiatus: 'hiatus', cancelled: 'stopped' };
 
 function statusBadge(status) {
@@ -123,6 +140,7 @@ function mangaCard(data, opts = {}) {
     <div class="manga-card ${opts.h ? 'h' : ''}" data-id="${esc(data.id)}">
       ${img ? `<img class="cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="cover"></div>'}
       ${data._new ? '<span class="new-badge">NEW</span>' : ''}
+      ${opts.rank ? `<span class="rank-badge${opts.rank <= 3 ? ' top' : ''}">${opts.rank}</span>` : ''}
       <button class="bmark ${bookmarked ? 'on' : ''}" data-id="${esc(data.id)}" data-bmark="${bookmarked ? '1' : '0'}" title="${bookmarked ? 'Bookmarked' : 'Bookmark this comic'}">${bookmarked ? '&#128278;' : '&#128279;'}</button>
       <div class="meta">
         <div class="title">${esc(titleOf(data))}</div>
@@ -307,7 +325,7 @@ function titleHash(id) {
 
 const ROUTE_TITLES = {
   search: 'Search', genre: 'Browse', library: 'My Library',
-  popular: 'Top 10 — most read', originals: 'Originals', account: 'Account settings',
+  popular: 'Top 10 — most read', leaderboard: 'Leaderboard — top readers', originals: 'Originals', account: 'Account settings',
   shop: 'RP Shop',
 };
 function updateRouteMeta(page, title, desc) {
@@ -335,6 +353,7 @@ function route() {
   if (page === 'reader') return renderReader(parts[1], parts[2], parseInt(parts[3], 10) || 0);
   if (page === 'library') return renderLibrary();
   if (page === 'popular') return renderPopular();
+  if (page === 'leaderboard') return renderLeaderboard();
   if (page === 'originals') return renderOriginals();
   if (page === 'original') return renderOriginalSeries(parts[1]);
   if (page === 'shop') return renderShop();
@@ -395,7 +414,7 @@ const DEFAULT_PREFS = {
   mode: 'dark',
   mature: false,
   reader: { ...DEFAULT_READER },
-  sections: { latest: true, manga: true, manhwa: true, manhua: true, popular: true },
+  sections: { latest: true, popular: true, charts: true },
 };
 const PREFS_KEY = 'mgs_settings';
 
@@ -574,12 +593,52 @@ async function comickGenres() {
   return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Taste profile: genres the signed-in reader actually reads + bookmarks,
+// weighted (recent reads count double). Guests get [] (generic feeds).
+// Resolves stored cx: IDs to genres via /api/comick/resolve.
+let tasteCache = { uid: null, genres: null };
+async function tasteGenres() {
+  const uid = currentUser ? currentUser.id : null;
+  if (!uid) return [];
+  if (tasteCache.uid === uid && tasteCache.genres) return tasteCache.genres;
+  let genres = [];
+  try {
+    const [prog, lib] = await Promise.all([
+      api('/api/progress').catch(() => ({ items: [] })),
+      api('/api/library').catch(() => ({ mangaIds: [] })),
+    ]);
+    const progIds = ((prog && prog.items) || []).slice(0, 12).map((p) => p.manga_id);
+    const libIds = ((lib && lib.mangaIds) || []).slice(0, 20);
+    const ids = [...new Set([...progIds, ...libIds])]
+      .filter((id) => String(id).startsWith('cx:')).slice(0, 24);
+    if (ids.length) {
+      const byId = await resolveComickIds(ids);
+      const score = new Map();
+      const add = (list, w) => {
+        for (const g of (list || [])) {
+          const k = String(g).toLowerCase();
+          if (!k || ADULT_GENRES.has(k)) continue;
+          const e = score.get(k) || { name: g, w: 0 };
+          e.w += w;
+          score.set(k, e);
+        }
+      };
+      progIds.forEach((id) => { const m = byId.get(id); if (m) add(m.genres, 2); });
+      libIds.forEach((id) => { const m = byId.get(id); if (m) add(m.genres, 1); });
+      genres = [...score.values()].sort((a, b) => b.w - a.w).map((e) => e.name);
+    }
+  } catch { genres = []; }
+  tasteCache = { uid, genres };
+  return genres;
+}
+
 // Adult-content handling: sources expose no ratings, so maturity is inferred
 // from genre tags (same level MangaDex's "erotica" sat at).
 const ADULT_GENRES = new Set(['adult', 'mature', 'smut', 'hentai', 'ecchi', 'doujinshi', 'yaoi', 'yuri', 'bara']);
 const isAdultSlug = (slug) => ADULT_GENRES.has(String(slug || '').toLowerCase());
 const isAdultItem = (m) => (m && Array.isArray(m.genres) && m.genres.some((g) => ADULT_GENRES.has(String(g).toLowerCase())))
-  || (m && m.genre && ADULT_GENRES.has(String(m.genre).toLowerCase()));
+  || (m && m.genre && ADULT_GENRES.has(String(m.genre).toLowerCase()))
+  || (m && m.contentRating && ['adult', 'erotica', 'pornographic'].includes(String(m.contentRating).toLowerCase()));
 function applyMatureFilter(items) {
   if (loadPrefs().mature) return items;
   return (items || []).filter((m) => !isAdultItem(m));
@@ -617,9 +676,7 @@ function openSettings() {
       <div>
         <p class="set-h">Home sections</p>
         ${sw('setSecLatest', s.latest, 'Latest updates')}
-        ${sw('setSecManga', s.manga, 'Manga')}
-        ${sw('setSecManhwa', s.manhwa, 'Manhwa')}
-        ${sw('setSecManhua', s.manhua, 'Manhua')}
+        ${sw('setSecCharts', s.charts, 'Trending + most followed')}
         ${sw('setSecPopular', s.popular, 'Updates (Hot / New)')}
       </div>
       <div>
@@ -654,9 +711,7 @@ function openSettings() {
       reader: prefs.reader,
       sections: {
         latest: $('#setSecLatest').checked,
-        manga: $('#setSecManga').checked,
-        manhwa: $('#setSecManhwa').checked,
-        manhua: $('#setSecManhua').checked,
+        charts: $('#setSecCharts').checked,
         popular: $('#setSecPopular').checked,
       },
     });
@@ -875,9 +930,8 @@ async function renderHome() {
           </div>
         </div>
         ${sec.latest ? section('Latest updates', 'latestRow', 'all sources') : ''}
-        ${sec.manga ? section('Manga', 'mangaRow', 'Japanese') : ''}
-        ${sec.manhwa ? section('Manhwa', 'manhwaRow', 'Korean') : ''}
-        ${sec.manhua ? section('Manhua', 'manhuaRow', 'Chinese') : ''}
+        ${sec.charts ? section('Most Recent Popular', 'trendRow', 'trending this week') : ''}
+        ${sec.charts ? section('Most Followed New Comics', 'followRow', 'most bookmarked') : ''}
         ${sec.popular ? `<div class="sect" id="updatesSect">
           <div class="upd-head">
             <h2 class="sect-title" style="margin:0">Updates</h2>
@@ -983,32 +1037,45 @@ async function renderHome() {
     wireCards(row);
   };
   const latestUrl = (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`;
-  const genreUrl = (s, slug, page) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${page}${needFilter ? '&enrich=1' : ''}`;
   const jobs = [];
   if (sec.latest) {
     jobs.push(fanout(MAJOR_SOURCES, (s) => latestUrl(s))
       .then((items) => paintRowItems('latestRow', items, { progressMap, filterAdult: needFilter }))
       .catch(() => paintRowItems('latestRow', [])));
   }
-  // Type rows only render for type slugs some major source actually has,
-  // backfilling across pages until ~20 fresh cards.
-  const genreIds = await comickGenres().then((g) => new Set(g.map((x) => x.id))).catch(() => new Set());
-  for (const [key, rowId, slug] of [['manga', 'mangaRow', 'manga'], ['manhwa', 'manhwaRow', 'manhwa'], ['manhua', 'manhuaRow', 'manhua']]) {
-    if (!sec[key] || !genreIds.has(slug)) continue;
+  // Community charts: ranked from reader activity across EVERY source mixed
+  // together (never one source). Rank badges match the chart look.
+  if (sec.charts && (document.getElementById('trendRow') || document.getElementById('followRow'))) {
     jobs.push((async () => {
-      let acc = [];
-      for (let page = 1; page <= 3 && acc.length < 20; page++) {
-        const items = await fanout(MAJOR_SOURCES, (s) => genreUrl(s, slug, page));
-        for (const m of items) {
+      let charts = null;
+      try { charts = await api('/api/charts'); } catch { charts = null; }
+      const paintChart = async (rowId, entries) => {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        const ids = (entries || []).map((e) => e && e.id).filter(Boolean);
+        if (!ids.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
+        const byId = await resolveComickIds(ids);
+        const origById = new Map();
+        for (const oid of ids.filter((id) => String(id).startsWith('orig:'))) {
+          try { origById.set(oid, (await api(`/api/originals/${String(oid).slice(5)}`)).data); } catch {}
+        }
+        let list = ids.map((id) => byId.get(id) || (origById.has(id) ? { ...origById.get(id), orig: true } : null)).filter(Boolean);
+        if (needFilter) list = applyMatureFilter(list);
+        const fresh = [];
+        for (const m of list) {
           if (!m || !m.id || used.has(m.id)) continue;
           used.add(m.id);
-          acc.push(m);
-          if (acc.length >= 24) break;
+          fresh.push(m);
+          if (fresh.length >= 18) break;
         }
-        if (!document.getElementById(rowId)) return;
-      }
-      paintRowItems(rowId, acc, { progressMap });
-    })().catch(() => paintRowItems(rowId, [])));
+        if (!fresh.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
+        fresh.forEach((m) => { if (!m.orig && hasNewChapters(m, progressMap)) m._new = true; });
+        row.innerHTML = fresh.map((m, i) => (m.orig ? origCard(m) : mangaCard(m, { h: true, rank: i + 1 }))).join('');
+        wireCards(row);
+      };
+      await paintChart('trendRow', charts && charts.trending);
+      await paintChart('followRow', charts && charts.followed);
+    })());
   }
   await Promise.all(jobs);
   // Recommended starts only after the rows above (plus whatever the sidebar
@@ -1166,7 +1233,21 @@ function initRecommended(needFilter) {
       if (!state.slugs) {
         try {
           const list = await comickGenres();
-          state.slugs = list.map((g) => g.id).filter((id) => id && !['manga', 'manhwa', 'manhua'].includes(id) && (loadPrefs().mature || !isAdultSlug(id)));
+          const base = list.filter((g) => g.id && !['manga', 'manhwa', 'manhua'].includes(g.id) && (loadPrefs().mature || !isAdultSlug(g.id)));
+          // Personalize: genres the reader actually reads float to the front
+          // (guests and empty histories keep the generic order).
+          let taste = [];
+          try { taste = (await tasteGenres()).map((g) => String(g).toLowerCase()); } catch {}
+          if (taste.length) {
+            const rank = (g) => {
+              const i = taste.indexOf(String(g.name || '').toLowerCase());
+              return i === -1 ? 1e6 : i;
+            };
+            base.sort((a, b) => rank(a) - rank(b));
+            const sub = document.querySelector('#recFreshSect .sect-sub');
+            if (sub) sub.textContent = 'picks based on your reading';
+          }
+          state.slugs = base.map((g) => g.id);
         } catch { state.slugs = []; }
         if (!state.slugs.length) {
           state.done = true;
@@ -1408,10 +1489,12 @@ function chapterItemHtml(c, progress, counts) {
   const title = c.title && c.title !== `Chapter ${c.number}` ? c.title : '';
   const isCurrent = progress && progress.chapter_id === c.url;
   const n = (counts || {})[c.url] || 0;
+  const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
   return `
-    <div class="chapter-item ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}">
+    <div class="chapter-item ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}"${ext}>
       <span class="cnum">Ch. ${esc(num)}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</span>
+      ${c.external ? '<span class="ext-flag" title="Reads in-app via another source">&#8599;</span>' : ''}
       ${isCurrent ? '<span class="resume-flag">Last read &middot; p.' + (progress.page + 1) + '</span>' : ''}
       <span class="cmeta"><span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span></span>
     </div>`;
@@ -1467,7 +1550,7 @@ async function renderTitle(mangaId) {
     const info = await api(`/api/comick/title?id=${encId}`);
     const feed = await api(`/api/comick/chapters?id=${encId}`);
     const manga = info.data;
-    updateRouteMeta('title', titleOf(manga), String(manga.description || '').slice(0, 160) || `Read ${titleOf(manga)} online free on MyGhoulScans.`);
+    updateRouteMeta('title', titleOf(manga), cleanDesc(manga.description).slice(0, 160) || `Read ${titleOf(manga)} online free on MyGhoulScans.`);
     const chapters = (feed.data || []).slice().sort((a, b) => (chapNum(b) || 0) - (chapNum(a) || 0));
     let readCounts = {};
     try { readCounts = (await api(`/api/reads/counts?manga=${encId}`)).counts || {}; } catch {}
@@ -1494,7 +1577,7 @@ async function renderTitle(mangaId) {
             ${(manga.genres || []).some((g) => ADULT_GENRES.has(String(g).toLowerCase())) ? '<span class="chip" style="border-color:var(--red);color:var(--red)">Mature</span>' : ''}
             ${chapters.length ? `<span class="chip">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>` : ''}
           </div>
-          ${manga.description ? `<div class="summary">${esc(manga.description)}</div>` : ''}
+          ${manga.description ? `<div class="summary">${esc(cleanDesc(manga.description))}</div>` : ''}
           ${tags.length ? `<div class="chips">${tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
           <div class="title-actions">
             ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || '?')} &#183; p.${progress.page + 1}</button>` : ''}
@@ -1507,24 +1590,89 @@ async function renderTitle(mangaId) {
       <div class="page-title" style="font-size:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Chapters
         ${chapters.length ? `<button class="btn ghost" id="readFirstBtn" style="margin-left:auto;font-size:13px">Read Chapter ${esc(firstChapterLabel(chapters))} (first)</button>` : ''}
       </div>
+      ${manga.source === 'comix' ? '<div class="comix-inapp"><p class="small" style="margin:4px 0 8px">This title is from comix.to — reading stays on MyGhoulScans. Pick a chapter below and we open the same chapter from another in-app source.</p><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn primary" id="findInAppBtn" style="font-size:13px">Find in-app version</button><span class="small" id="altSrcRow"></span></div></div>' : ''}
       ${chapters.length ? chapterListHtml(chapters, progress, readCounts)
         : `<div class="centered" style="margin:32px 0">
             <p class="small">No chapters found for this title on ${esc(manga.source || 'the source')}.</p>
           </div>`}
 
+      <div class="sect" id="simSect" style="display:none">
+        <h2 class="sect-title">More like this</h2>
+        <div class="hrow-wrap">
+          <button class="row-ctrl prev" data-row="simRow" title="Scroll left">&#10094;</button>
+          <div class="hrow" id="simRow">${spinner(6)}</div>
+          <button class="row-ctrl next" data-row="simRow" title="Scroll right">&#10095;</button>
+        </div>
+      </div>
       <div class="sect" id="recSect">
         <h2 class="sect-title">Recommended by readers <button class="btn ghost" id="recBtn">+ Recommend similar titles</button></h2>
         <div class="hrow" id="recRow"></div>
       </div>`;
 
+    // Comix has no readable pages on its own (signed/encrypted API), so every
+    // external chapter stays on this site: we open the same chapter number
+    // from another working source (mangaread, flamecomics, mangayy, …) in-app.
+    const openExternalInApp = async (ch) => {
+      const row = $('#altSrcRow');
+      const want = ch ? parseFloat(ch.number) : NaN;
+      try {
+        if (row) row.textContent = 'Finding in-app version…';
+        else toast('Finding in-app version…');
+        const alts = await findAltSources(titleOf(manga), mangaId, manga.source);
+        if (!alts.length) {
+          if (row) row.textContent = 'No in-app source has this title yet — try the same title from Search.';
+          else toast('No in-app source has this title yet');
+          return;
+        }
+        for (const a of alts) {
+          try {
+            const feed = (await api(`/api/comick/chapters?id=${encodeURIComponent(a.id)}`)).data || [];
+            const pick = (!isNaN(want) ? matchAltChapter(feed, want) : null) || firstChapter(feed) || feed[0];
+            if (pick && pick.url) { location.hash = `#/reader/${a.id}/${encodeURIComponent(pick.url)}/0`; return; }
+          } catch {}
+        }
+        if (row) row.textContent = 'No readable chapter found on other sources yet.';
+        else toast('No readable chapter found on other sources yet');
+      } catch {
+        if (row) row.textContent = 'Could not find an in-app version right now.';
+        else toast('Could not find an in-app version right now');
+      }
+    };
     const goFirstChapter = () => {
       const first = firstChapter(chapters);
       const url = chapterUrl(first);
       if (!url) return;
+      if (first && first.external) { openExternalInApp(first); return; }
       location.hash = `#/reader/${mangaId}/${encodeURIComponent(url)}/0`;
     };
     $('#startBtn')?.addEventListener('click', goFirstChapter);
     $('#readFirstBtn')?.addEventListener('click', goFirstChapter);
+    $('#findInAppBtn')?.addEventListener('click', async () => {
+      const row = $('#altSrcRow');
+      try {
+        if (row) row.textContent = 'Searching other sources…';
+        const alts = await findAltSources(titleOf(manga), mangaId, manga.source);
+        if (!alts.length) { if (row) row.textContent = 'No in-app source has this title yet.'; return; }
+        if (row) {
+          row.innerHTML = '';
+          alts.slice(0, 5).forEach((a) => {
+            const b = document.createElement('button');
+            b.className = 'btn ghost';
+            b.style.fontSize = '12px';
+            b.textContent = `Read on ${a.name || a.source}`;
+            b.addEventListener('click', async () => {
+              try {
+                const feed = (await api(`/api/comick/chapters?id=${encodeURIComponent(a.id)}`)).data || [];
+                const pick = firstChapter(feed) || feed[0];
+                if (pick && pick.url) location.hash = `#/reader/${a.id}/${encodeURIComponent(pick.url)}/0`;
+                else toast('No chapters on that source');
+              } catch { toast('Could not load that source'); }
+            });
+            row.appendChild(b);
+          });
+        }
+      } catch { if (row) row.textContent = 'Search failed — try again.'; }
+    });
 
     $('#followBtn').addEventListener('click', async () => {
       const r = await toggleBookmark(mangaId);
@@ -1543,6 +1691,12 @@ async function renderTitle(mangaId) {
     view.querySelector('#chapterList')?.addEventListener('click', (e) => {
       const it = e.target.closest('.chapter-item');
       if (!it) return;
+      // External (comix.to) chapters stay in-app via another source.
+      if (it.dataset.ext === '1' && it.dataset.url) {
+        const num = parseFloat((it.querySelector('.cnum')?.textContent || '').replace(/[^0-9.]/g, ''));
+        openExternalInApp({ number: isNaN(num) ? undefined : num });
+        return;
+      }
       location.hash = `#/reader/${mangaId}/${encodeURIComponent(it.dataset.cid)}/0`;
     });
 
@@ -1564,6 +1718,7 @@ async function renderTitle(mangaId) {
 
     $('#recBtn').addEventListener('click', () => openRecModal(mangaId));
     fillRecRow(mangaId);
+    fillSimilarRow(mangaId, manga.genres);
   } catch (e) {
     view.innerHTML = `<div class="centered">Could not load title: ${esc(e.message)}</div>`;
   }
@@ -2536,6 +2691,50 @@ async function fillRecRow(mangaId) {
   }
 }
 
+// "More like this": same-genre titles as the one being viewed, merged across
+// all major sources. Genre names from title details are matched against the
+// live genre menu (case-insensitive); unmatched names are slugified.
+async function fillSimilarRow(mangaId, genres) {
+  const sect = $('#simSect');
+  const row = $('#simRow');
+  if (!sect || !row) return;
+  const names = [...new Set((genres || []).map((g) => String(g).trim()).filter(Boolean))].slice(0, 3);
+  if (!names.length) return;
+  sect.style.display = '';
+  try {
+    let menu = [];
+    try { menu = await comickGenres(); } catch {}
+    const byName = new Map(menu.map((g) => [String(g.name || '').toLowerCase(), g.id]));
+    const slugs = names
+      .map((n) => byName.get(n.toLowerCase()) || n.toLowerCase().replace(/\s+/g, '-'))
+      .filter(Boolean);
+    if (!slugs.length) { sect.style.display = 'none'; return; }
+    const needFilter = !loadPrefs().mature;
+    const seen = new Set([mangaId]);
+    const acc = [];
+    for (const slug of slugs) {
+      if (acc.length >= 18) break;
+      let items = [];
+      try {
+        items = await fanout(MAJOR_SOURCES, (s) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=1&enrich=1`);
+      } catch { continue; }
+      if (needFilter) items = applyMatureFilter(items);
+      for (const m of (items || [])) {
+        if (!m || !m.id || seen.has(m.id)) continue;
+        seen.add(m.id);
+        acc.push(m);
+        if (acc.length >= 18) break;
+      }
+      if (!document.getElementById('simRow')) return;
+    }
+    if (!acc.length) { sect.style.display = 'none'; return; }
+    row.innerHTML = acc.map((m) => mangaCard(m, { h: true })).join('');
+    wireCards(row);
+  } catch {
+    sect.style.display = 'none';
+  }
+}
+
 // ---------- library ----------
 // Short relative time ("3 days ago") for library columns.
 function relTime(ts) {
@@ -3344,6 +3543,71 @@ async function renderPopular() {
     });
   } catch (e) {
     list.innerHTML = `<div class="centered">Could not load chart: ${esc(e.message)}</div>`;
+  }
+}
+
+// ---------- leaderboard (top readers: RP, hours, bookmarks, likes, dislikes) ----------
+const LB_TABS = [
+  ['rp', 'Most RP'],
+  ['hours', 'Hours'],
+  ['bookmarks', 'Bookmarked'],
+  ['likes', 'Likes'],
+  ['dislikes', 'Dislikes'],
+];
+const LB_HINT = {
+  rp: 'Ranked by Reader Points earned from reading.',
+  hours: 'Ranked by estimated time spent reading.',
+  bookmarks: 'Ranked by titles in each reader library.',
+  likes: 'Ranked by likes received on comments.',
+  dislikes: 'Ranked by dislikes received on comments.',
+};
+function lbValueLabel(by, v) {
+  const n = Number(v || 0);
+  if (by === 'hours') {
+    if (n >= 3600) return `${(n / 3600).toFixed(1)}h`;
+    if (n >= 60) return `${Math.round(n / 60)}m`;
+    return `${n}s`;
+  }
+  return n.toLocaleString();
+}
+async function renderLeaderboard(active) {
+  const by = LB_TABS.some(([id]) => id === active) ? active : 'rp';
+  updateRouteMeta('leaderboard');
+  view.innerHTML = `
+    <div class="page-title">Leaderboard &mdash; top readers</div>
+    <p class="small" style="margin:-10px 0 16px">${esc(LB_HINT[by])}</p>
+    <div class="lb-tabs" role="tablist">
+      ${LB_TABS.map(([id, label]) => `<button class="lb-tab${id === by ? ' active' : ''}" data-lb="${id}" role="tab">${esc(label)}</button>`).join('')}
+    </div>
+    <div class="pop-list" id="lbList">${spinner()}</div>`;
+  view.querySelectorAll('.lb-tab').forEach((b) => {
+    b.addEventListener('click', () => renderLeaderboard(b.dataset.lb));
+  });
+  const list = document.getElementById('lbList');
+  try {
+    const { data } = await api(`/api/leaderboard?by=${encodeURIComponent(by)}`);
+    if (!data || !data.length) { list.innerHTML = '<div class="centered">Nobody is on the board yet. Read, bookmark, or comment to claim a spot!</div>'; return; }
+    const max = Math.max(...data.map((r) => Number(r.value || 0)), 1);
+    list.innerHTML = data.map((u, i) => {
+      const w = Math.round((Number(u.value || 0) / max) * 100);
+      const av = u.avatar
+        ? (String(u.avatar).startsWith('data:') ? String(u.avatar) : `/uploads/${esc(u.avatar)}`)
+        : `/api/avatar/${u.id}.svg`;
+      return `
+        <div class="pop-item lb-item">
+          <div class="pop-rank">${i + 1}</div>
+          <span class="lb-av${(u.frame ? ` av-frame-${String(u.frame).replace(/[^a-z-]/g, '')}` : '')}">
+            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${av}" alt="" />
+          </span>
+          <div class="pop-info">
+            <div class="pop-name">${styledNameHtml(u, 'Reader')}${titleBadgeHtml(u.title)}</div>
+            <div class="pop-track"><div class="pop-bar" style="width:${w}%"></div></div>
+          </div>
+          <div class="pop-count" title="${esc(LB_TABS.find(([id]) => id === by)[1])}"><b>${esc(lbValueLabel(by, u.value))}</b></div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="centered">Could not load leaderboard: ${esc(e.message)}</div>`;
   }
 }
 

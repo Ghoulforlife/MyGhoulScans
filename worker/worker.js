@@ -6,6 +6,7 @@
 // worker/schema.sql on it once first; see worker/wrangler.toml)
 // NOTE: uploads/originals can't work here (no filesystem) — those endpoints
 // return clean empty states, and the static build hides the publish buttons.
+import COMIX_SNAPSHOT from './comix-snapshot.json';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -22,7 +23,11 @@ const err = (message, status = 502) => json({ error: message }, status, 0);
 // ---------- Comick source API ----------
 const COMICK_API_DEFAULT = 'https://comick-source-api.notaspider.dev';
 const SCRAPE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 MyGhoulScans/2.0';
-const COMICK_DEFAULT_SOURCES = ['mangaread', 'flamecomics'];
+const COMICK_DEFAULT_SOURCES = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans'];
+// Upstream search health, verified 2026-09-17. Priority sources return
+// results; dead ones are Shutdown or always empty.
+const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans'];
+const SEARCH_DEAD = new Set(['bato', 'mangapark', 'falcon-scans', 'weebdex', 'mangasushi', 'madarascans']);
 
 // base64url without Node Buffer (Workers runtime).
 function b64urlEncode(str) {
@@ -107,15 +112,64 @@ async function fetchHtml(url, referer) {
   throw lastErr || new Error('Fetch failed');
 }
 
+// comix.to sits behind bot filtering that 404s bare datacenter requests, so
+// comix pages are fetched with full browser-navigation headers. Used ONLY for
+// comix.to (WP scrapers keep the plain fetch above).
+async function fetchComixHtml(url, referer) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': referer ? 'same-origin' : 'none',
+          'Sec-Fetch-User': '?1',
+          'sec-ch-ua': '"Chromium";v="126", "Google Chrome";v="126", "Not-A.Brand";v="99"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          ...(referer ? { Referer: referer } : {}),
+        },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!res.ok) {
+        const e = new Error(`Source ${res.status} for ${String(url).split('?')[0]}`);
+        e.status = res.status;
+        throw e;
+      }
+      return (await res.text()).slice(0, 4 * 1024 * 1024);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 1) await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('Fetch failed');
+}
+
 function decodeEntities(s) {
   return String(s || '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'")
+    // Numeric entities from upstream/WordPress text (&#8217; → ’, &#x2019; → ’).
+    .replace(/&#(\d{1,7});/g, (_, n) => {
+      const c = parseInt(n, 10);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : _;
+    })
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, h) => {
+      const c = parseInt(h, 16);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : _;
+    })
     .trim();
 }
 function absUrl(maybeRel, base) {
   try {
-    const u = String(maybeRel || '').trim().replace(/\s+/g, '');
+    // Keep inner spaces intact — `new URL` below percent-encodes them (%20).
+    // Stripping whitespace corrupts CDN paths like ".../Solo Leveling/1.jpg".
+    const u = String(maybeRel || '').trim();
     if (!u || u.startsWith('data:')) return '';
     return new URL(u, base).toString();
   } catch { return ''; }
@@ -125,7 +179,8 @@ function imgTagSrc(tag) {
     const m = tag.match(new RegExp(n + '\\s*=\\s*(["\'])(.*?)\\1', 'is'));
     return m ? m[2].trim() : '';
   };
-  const one = (v) => String(v || '').replace(/\s+/g, '');
+  // Single-URL attributes keep inner spaces (absUrl encodes them as %20).
+  const one = (v) => String(v || '').trim();
   const srcset = attr('data-srcset') || attr('srcset');
   if (srcset) {
     const first = srcset.split(',')[0].trim().split(/\s+/)[0];
@@ -133,7 +188,7 @@ function imgTagSrc(tag) {
   }
   return one(attr('data-src')) || one(attr('data-lazy-src')) || one(attr('data-original')) || one(attr('src'));
 }
-const JUNK_IMG = /(logo|avatar|banner|icon|ads?-|advert|gravatar|emoji|spinner|loading|placeholder|favicon|\.svg(\?|$))/i;
+const JUNK_IMG = /(logo|avatar|userpic|banner|icon|[\W_]ads?(?=[-_.]|$)|advert|free[_-]?ads?|premium|btn[_-]?close|close[_-]?btn|pubadx|demon-(logo|title)|gravatar|emoji|spinner|loading|placeholder|favicon|\.svg(\?|$))/i;
 function cleanImgList(urls) {
   const out = [];
   const seen = new Set();
@@ -154,6 +209,22 @@ function metaContent(html, prop) {
   if (!tag) return '';
   const c = tag[0].match(/content=["']([^"']{1,500})["']/i);
   return c ? decodeEntities(c[1]) : '';
+}
+
+// Source synopses ship with credit boilerplate + raw URLs
+// ("**Original Webtoon:** [KakaoPage] (https://…), [Daum] (https://…)").
+// Readers only want the story text — strip links, keep words, never emit <a>.
+function cleanSynopsis(s) {
+  let t = String(s || '');
+  t = t.replace(/\[([^\]]{1,120})\]\((https?:[^)\s]{1,500})\)/gi, '$1');
+  t = t.replace(/https?:\/\/[^\s)'"]+/gi, '');
+  t = t.replace(/\*\*/g, '');
+  t = t.replace(/\[(KakaoPage|Daum|Kakao Webtoon|Webtoon|Original Webtoon)[^\]]*\]/gi, '');
+  t = t.replace(/\(\s*\)/g, '');
+  t = t.replace(/"?\*{0,2}"?Original Webtoon"?:?\*{0,2}"?\s*,?/gi, '');
+  t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').replace(/\s+([,.!?;:])/g, '$1').trim();
+  t = t.replace(/,\s*,/g, ',').replace(/\(\s*,/, '(').replace(/,\s*\)/, ')').replace(/\(\s*\)/g, '').trim();
+  return t.slice(0, 1500);
 }
 
 async function scrapeTitle(source, url) {
@@ -190,17 +261,70 @@ async function scrapeTitle(source, url) {
       if (d) description = decodeEntities(d[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 1500);
     }
   }
-  return { title: title || 'Untitled', cover, description, status, type, genres };
+  return { title: title || 'Untitled', cover, description: cleanSynopsis(description), status, type, genres };
 }
 const titleCache = new Map();
 const TITLE_TTL = 10 * 60 * 1000;
 async function cachedTitle(source, url) {
   const hit = titleCache.get(url);
   if (hit && Date.now() - hit.at < TITLE_TTL) return hit.data;
-  const data = await scrapeTitle(source, url);
+  const data = source === 'comix' ? await scrapeComixTitle(url) : await scrapeTitle(source, url);
   if (titleCache.size > 500) titleCache.delete(titleCache.keys().next().value);
   titleCache.set(url, { data, at: Date.now() });
   return data;
+}
+
+// Comix title details (same embedded JSON as the homepage feeds, but for one
+// hid plus genres). Chapter images need their private API, so chapters below
+// expose first/latest links opened externally.
+async function scrapeComixTitle(url) {
+  try {
+    const html = await fetchComixHtml(url, 'https://comix.to/');
+  const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('Comix title data not found');
+  const initial = JSON.parse(m[1]);
+  const q = (initial && initial.queries) || {};
+  const key = Object.keys(q).find((k) => {
+    try { const p = JSON.parse(k); return p[0] === 'manga' && p[1] === 'detail'; } catch { return false; }
+  });
+  const d = key ? q[key] : null;
+  if (!d || !d.title) throw new Error('Comix title data not found');
+  const genres = Array.isArray(d.genres) ? d.genres.map((g) => g.title || g.slug).filter(Boolean) : [];
+  return {
+    title: d.title,
+    cover: (d.poster && (d.poster.large || d.poster.medium)) || '',
+    description: cleanSynopsis(d.synopsis || ''),
+    status: d.status || '',
+    type: d.type || '',
+    genres,
+    contentRating: d.contentRating || '',
+    latestChapter: d.latestChapter ?? 0,
+    firstChapterUrl: d.firstChapterUrl ? 'https://comix.to' + d.firstChapterUrl : '',
+    latestChapterUrl: d.latestChapterUrl ? 'https://comix.to' + d.latestChapterUrl : '',
+  };
+  } catch (e) {
+    const snap = COMIX_SNAPSHOT && COMIX_SNAPSHOT.titles;
+    const hit = snap && snap[url];
+    if (hit) return { ...hit, description: cleanSynopsis(hit.description || '') };
+    throw e;
+  }
+}
+async function comixChapters(mangaUrl) {
+  const t = await scrapeComixTitle(mangaUrl);
+  const numOf = (u, fb) => {
+    const n = String(u || '').match(/chapter-(\d+(?:\.\d+)?)/i);
+    return n ? parseFloat(n[1]) : fb;
+  };
+  const out = [];
+  if (t.firstChapterUrl) {
+    out.push({ id: t.firstChapterUrl, number: numOf(t.firstChapterUrl, 1), title: 'Chapter 1', url: t.firstChapterUrl, external: true });
+  }
+  if (t.latestChapterUrl && t.latestChapterUrl !== t.firstChapterUrl) {
+    const n = numOf(t.latestChapterUrl, Number(t.latestChapter) || 0);
+    out.push({ id: t.latestChapterUrl, number: n, title: 'Chapter ' + (n || t.latestChapter || '?'), url: t.latestChapterUrl, external: true });
+  }
+  if (!out.length) throw new Error('No chapters found for this title');
+  return out.sort((a, b) => a.number - b.number);
 }
 
 function extractPages(html, chapterUrl) {
@@ -235,12 +359,13 @@ const pagesCache = new Map();
 const PAGES_TTL = 10 * 60 * 1000;
 
 async function comickChapters(env, source, mangaUrl) {
+  if (source === 'comix') return comixChapters(mangaUrl);
   try {
     const data = await comickApi(env, '/api/chapters', { method: 'POST', body: { url: mangaUrl, source } });
     const list = (data.chapters || []).map((c) => ({
       id: String(c.id ?? c.number),
       number: Number(c.number) || 0,
-      title: c.title || '',
+      title: decodeEntities(c.title || ''),
       url: c.url,
     })).filter((c) => c.url);
     if (list.length) return list.sort((a, b) => a.number - b.number);
@@ -310,13 +435,76 @@ function normResult(source, r) {
   return {
     id: cxEncode(source, url),
     source,
-    title: r.title,
+    title: decodeEntities(r.title),
     url,
     cover: r.coverImage || '',
     latestChapter: r.latestChapter || 0,
     lastUpdated: r.lastUpdated || '',
     rating: r.rating ?? null,
   };
+}
+
+// Comix homepage feeds (see server.js — same embedded-JSON approach).
+const comixCache = { data: null, at: 0 };
+const COMIX_TTL = 10 * 60 * 1000;
+function normComixItem(it) {
+  const url = 'https://comix.to' + (it.url || '');
+  const poster = (it.poster && (it.poster.large || it.poster.medium)) || '';
+  return {
+    id: cxEncode('comix', url),
+    source: 'comix',
+    title: it.title || 'Untitled',
+    url,
+    cover: poster,
+    latestChapter: it.latestChapter ?? 0,
+    latestChapterLabel: it.latestChapter != null ? String(it.latestChapter) : '',
+    status: it.status || '',
+    type: it.type || '',
+    rating: it.ratedAvg ?? null,
+    follows: it.followsTotal ?? 0,
+    contentRating: it.contentRating || '',
+  };
+}
+async function fetchComixHome() {
+  if (comixCache.data && Date.now() - comixCache.at < COMIX_TTL) return comixCache.data;
+  try {
+    const html = await fetchComixHtml('https://comix.to');
+  const m = html.match(/<script type="application\/json" id="initial-data">([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('Comix homepage data not found');
+  const initial = JSON.parse(m[1]);
+  const q = (initial && initial.queries) || {};
+  const pick = (pred) => {
+    const key = Object.keys(q).find((k) => {
+      try { return pred(JSON.parse(k)); } catch { return false; }
+    });
+    let arr = key ? q[key] : [];
+    // "top" feeds are bare arrays; "list" feeds are { items, meta } objects.
+    if (arr && !Array.isArray(arr)) arr = arr.items || arr.data || [];
+    return (Array.isArray(arr) ? arr : []).map(normComixItem);
+  };
+  const data = {
+    trending: pick((p) => p[0] === 'manga' && p[1] === 'top' && p[2] && p[2].type === 'trending'),
+    follows: pick((p) => p[0] === 'manga' && p[1] === 'top' && p[2] && p[2].type === 'follows'),
+    hot: pick((p) => p[0] === 'manga' && p[1] === 'list' && p[2] && p[2].scope === 'hot'),
+    recent: pick((p) => p[0] === 'manga' && p[1] === 'list' && p[2] && p[2].order && p[2].order.created_at === 'desc'),
+  };
+  if (!data.trending.length && !data.follows.length && !data.hot.length && !data.recent.length) {
+    throw new Error('Comix feeds came back empty');
+  }
+    comixCache.data = { ...data, stale: false };
+    comixCache.at = Date.now();
+    return comixCache.data;
+  } catch (e) {
+    // comix.to blocks datacenter IPs — fall back to the bundled snapshot
+    // (refresh with scripts/fetch-comix-snapshot.mjs + redeploy).
+    const snap = COMIX_SNAPSHOT && COMIX_SNAPSHOT.data;
+    if (snap && (snap.trending || snap.follows || snap.hot || snap.recent)) {
+      comixCache.data = { ...snap, stale: true, snapshotAt: COMIX_SNAPSHOT.at || null };
+      comixCache.at = Date.now();
+      return comixCache.data;
+    }
+    throw e;
+  }
 }
 
 async function enrichItems(items) {
@@ -380,6 +568,8 @@ async function ensureUserColumns(env) {
     'ALTER TABLE users ADD COLUMN frame TEXT NOT NULL DEFAULT \'\'',
     'ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT \'\'',
     'ALTER TABLE users ADD COLUMN owned TEXT NOT NULL DEFAULT \'[]\'',
+    'ALTER TABLE users ADD COLUMN read_seconds INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN last_read_at TEXT',
   ]) {
     try { await env.DB.prepare(ddl).run(); } catch {}
   }
@@ -561,10 +751,10 @@ export default {
     const p = url.pathname;
     // Build stamp (proves which code is actually deployed).
     if (p === '/version' && req.method === 'GET') {
-      return json({ build: 'mgs-shop-rp-2', time: new Date().toISOString() });
+      return json({ build: 'mgs-lb-1', time: new Date().toISOString() });
     }
     if (p.startsWith('/auth/') || p.startsWith('/library') || p.startsWith('/progress')
-      || p.startsWith('/reads') || p.startsWith('/popular') || p.startsWith('/comments')
+      || p.startsWith('/reads') || p.startsWith('/popular') || p.startsWith('/charts') || p.startsWith('/leaderboard') || p.startsWith('/comments')
       || p.startsWith('/recs') || p.startsWith('/history') || p.startsWith('/me/') || p.startsWith('/shop') || p.startsWith('/originals')) {
       if (!env.DB && !p.startsWith('/originals')) return err('Accounts database not connected', 503);
       return handleAccount(req, env, p, q);
@@ -585,13 +775,17 @@ export default {
           return json({ data: COMICK_DEFAULT_SOURCES.map((id) => ({ id, name: id, type: 'aggregator' })), fallback: true });
         }
       }
-      // Search (fan-out across sources, merged)
+      // Search (fan-out across verified sources first, merged)
       if (p === '/comick/search') {
         const query = String(q.get('q') || '').trim().slice(0, 80);
         if (!query) return err('q is required', 400);
         const single = String(q.get('source') || '').trim().toLowerCase();
         const multi = String(q.get('sources') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-        const sources = [...new Set(single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES))].slice(0, 4);
+        const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
+        const sources = [...new Set([
+          ...SEARCH_PRIORITY.filter((s) => requested.includes(s)),
+          ...requested.filter((s) => !SEARCH_DEAD.has(s)),
+        ])].slice(0, 6);
         const settled = await Promise.allSettled(sources.map(async (source) => {
           const data = await comickApi(env, '/api/search', { method: 'POST', body: { query, source } });
           return (data.results || []).map((r) => normResult(source, r));
@@ -655,6 +849,15 @@ export default {
         if (enrich) data = { data: await enrichItems(data.data.slice(0, 12)).then((m) => data.data.slice(0, 12).map((it) => ({ ...it, ...(m.get(it.id) || {}) }))) };
         latestCache.set(key, { data, at: Date.now() });
         return json(data, 200, 60);
+      }
+      // Comix charts (comix.to homepage embeds trending/follows/hot/recent
+      // feeds as JSON — one fetch powers all four rows).
+      if (p === '/comix/home') {
+        try {
+          return json({ data: await fetchComixHome() }, 200, 300);
+        } catch (e) {
+          return err(e.message || 'Comix feeds unavailable', 502);
+        }
       }
       // Genre menu (?source=)
       if (p === '/comick/genres') {
@@ -929,8 +1132,10 @@ async function handleAccount(req, env, p, q) {
     if (p === '/library' && req.method === 'GET') {
       needDb();
       needAuth();
-      const rows = await DB.prepare('SELECT manga_id FROM follows WHERE user_id = ? ORDER BY added_at DESC').bind(me.id).all();
-      return json({ mangaIds: rows.results.map((r) => r.manga_id) });
+      const rows = await DB.prepare('SELECT manga_id, added_at FROM follows WHERE user_id = ? ORDER BY added_at DESC').bind(me.id).all();
+      const added = {};
+      for (const r of rows.results) added[r.manga_id] = r.added_at || null;
+      return json({ mangaIds: rows.results.map((r) => r.manga_id), added });
     }
     if (p === '/library' && req.method === 'DELETE') {
       needDb();
@@ -984,6 +1189,14 @@ async function handleAccount(req, env, p, q) {
         VALUES (?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(user_id, manga_id) DO UPDATE SET chapter_id=excluded.chapter_id, page=excluded.page, chapter_label=excluded.chapter_label, updated_at=datetime('now')`)
         .bind(me.id, id, chapterId, page, chapterLabel || null).run();
+      // Reading-time heartbeat for the hours leaderboard (capped deltas).
+      try {
+        const urow = await DB.prepare('SELECT read_seconds, last_read_at FROM users WHERE id = ?').bind(me.id).first().catch(() => null);
+        const last = urow && urow.last_read_at ? Date.parse(String(urow.last_read_at).replace(' ', 'T') + 'Z') : 0;
+        const nowMs = Date.now();
+        const add = last && nowMs - last < 5 * 60 * 1000 ? Math.max(1, Math.floor((nowMs - last) / 1000)) : 20;
+        await DB.prepare('UPDATE users SET read_seconds = COALESCE(read_seconds,0) + ?1, last_read_at = datetime(\'now\') WHERE id = ?2').bind(add, me.id).run().catch(() => {});
+      } catch {}
       return json({ ok: true });
     }
     if (m && req.method === 'DELETE') {
@@ -1015,6 +1228,31 @@ async function handleAccount(req, env, p, q) {
       const limit = Math.max(1, Math.min(30, parseInt(q.get('limit') || '10', 10) || 10));
       const rows = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads GROUP BY manga_id ORDER BY n DESC LIMIT ${limit}`).bind().all().catch(() => ({ results: [] }));
       return json({ data: rows.results });
+    }
+    // Home chart feeds (public): community-ranked titles, mixed across every
+    // source — Most Recent Popular (reads, last 7 days) + Most Followed New
+    // Comics (bookmarks).
+    if (p === '/charts' && req.method === 'GET') {
+      needDb();
+      const trending = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads WHERE created_at >= datetime('now', '-7 days') AND manga_id NOT LIKE 'cx:comix:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
+      const followed = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM follows WHERE manga_id NOT LIKE 'cx:comix:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
+      return json({ trending: trending.results, followed: followed.results }, 200, 60);
+    }
+    // Community leaderboard (public): top readers by RP, reading hours,
+    // bookmarks, and likes/dislikes received on their comments.
+    if (p === '/leaderboard' && req.method === 'GET') {
+      needDb();
+      const by = String(q.get('by') || 'rp');
+      if (!['rp', 'hours', 'bookmarks', 'likes', 'dislikes'].includes(by)) return err('unknown board', 400);
+      const U = 'u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame';
+      let sql;
+      if (by === 'hours') sql = `SELECT ${U}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.read_seconds,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'bookmarks') sql = `SELECT ${U}, COUNT(f.manga_id) AS value FROM users u JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'likes') sql = `SELECT ${U}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'dislikes') sql = `SELECT ${U}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else sql = `SELECT ${U}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.rp,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      const rows = await DB.prepare(sql).all().catch(() => ({ results: [] }));
+      return json({ by, data: rows.results }, 200, 60);
     }
     // Comments (per chapter)
     if (p === '/comments' && req.method === 'GET') {
