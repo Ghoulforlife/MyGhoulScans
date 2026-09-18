@@ -661,6 +661,19 @@ app.get('/api/popular', (req, res) => {
   res.json(data);
 });
 
+// Home chart feeds (public): community-ranked titles, mixed across every
+// source — Most Recent Popular (reads, last 7 days) + Most Followed New
+// Comics (bookmarks). Powers the home chart rows.
+const chartsCache = { data: null, at: 0 };
+const CHARTS_TTL = 60 * 1000;
+app.get('/api/charts', (req, res) => {
+  if (chartsCache.data && Date.now() - chartsCache.at < CHARTS_TTL) return res.json(chartsCache.data);
+  const data = { trending: db.chartTrending(18), followed: db.chartFollowed(18) };
+  chartsCache.data = data;
+  chartsCache.at = Date.now();
+  res.json(data);
+});
+
 // Community leaderboard (public): top readers by RP, reading hours,
 // bookmarks, and likes/dislikes received on their comments.
 const LB_BOARDS = ['rp', 'hours', 'bookmarks', 'likes', 'dislikes'];

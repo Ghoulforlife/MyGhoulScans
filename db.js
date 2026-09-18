@@ -533,6 +533,21 @@ function popularMangas(limit) {
   return db.prepare('SELECT manga_id AS id, COUNT(*) AS n FROM reads GROUP BY manga_id ORDER BY n DESC LIMIT ?').all(limit);
 }
 
+// Home chart feeds (mixed across every source by construction — ranked from
+// community activity, never from a single source).
+// Most Recent Popular: most-read titles over the last 7 days.
+function chartTrending(limit) {
+  return db.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads
+    WHERE created_at >= datetime('now', '-7 days') AND manga_id NOT LIKE 'cx:comix:%'
+    GROUP BY manga_id ORDER BY n DESC LIMIT ?`).all(limit);
+}
+// Most Followed New Comics: most-bookmarked titles, ties favor recent follows.
+function chartFollowed(limit) {
+  return db.prepare(`SELECT manga_id AS id, COUNT(*) AS n, MAX(added_at) AS last FROM follows
+    WHERE manga_id NOT LIKE 'cx:comix:%'
+    GROUP BY manga_id ORDER BY n DESC, last DESC LIMIT ?`).all(limit);
+}
+
 // ---------- Recommendations ----------
 function addRec(mangaId, recMangaId, userId) {
   db.prepare('INSERT OR IGNORE INTO recs (manga_id, rec_manga_id, user_id) VALUES (?, ?, ?)').run(mangaId, recMangaId, userId);
@@ -672,6 +687,8 @@ module.exports = {
   addRead,
   chapterReadCounts,
   popularMangas,
+  chartTrending,
+  chartFollowed,
   createOriginalSeries,
   getOriginalSeries,
   listOriginalSeries,

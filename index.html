@@ -1778,7 +1778,7 @@ const DEFAULT_PREFS = {
   mode: 'dark',
   mature: false,
   reader: { ...DEFAULT_READER },
-  sections: { latest: true, popular: true },
+  sections: { latest: true, popular: true, charts: true },
 };
 const PREFS_KEY = 'mgs_settings';
 
@@ -2040,6 +2040,7 @@ function openSettings() {
       <div>
         <p class="set-h">Home sections</p>
         ${sw('setSecLatest', s.latest, 'Latest updates')}
+        ${sw('setSecCharts', s.charts, 'Trending + most followed')}
         ${sw('setSecPopular', s.popular, 'Updates (Hot / New)')}
       </div>
       <div>
@@ -2074,6 +2075,7 @@ function openSettings() {
       reader: prefs.reader,
       sections: {
         latest: $('#setSecLatest').checked,
+        charts: $('#setSecCharts').checked,
         popular: $('#setSecPopular').checked,
       },
     });
@@ -2292,6 +2294,8 @@ async function renderHome() {
           </div>
         </div>
         ${sec.latest ? section('Latest updates', 'latestRow', 'all sources') : ''}
+        ${sec.charts ? section('Most Recent Popular', 'trendRow', 'trending this week') : ''}
+        ${sec.charts ? section('Most Followed New Comics', 'followRow', 'most bookmarked') : ''}
         ${sec.popular ? `<div class="sect" id="updatesSect">
           <div class="upd-head">
             <h2 class="sect-title" style="margin:0">Updates</h2>
@@ -2402,6 +2406,40 @@ async function renderHome() {
     jobs.push(fanout(MAJOR_SOURCES, (s) => latestUrl(s))
       .then((items) => paintRowItems('latestRow', items, { progressMap, filterAdult: needFilter }))
       .catch(() => paintRowItems('latestRow', [])));
+  }
+  // Community charts: ranked from reader activity across EVERY source mixed
+  // together (never one source). Rank badges match the chart look.
+  if (sec.charts && (document.getElementById('trendRow') || document.getElementById('followRow'))) {
+    jobs.push((async () => {
+      let charts = null;
+      try { charts = await api('/api/charts'); } catch { charts = null; }
+      const paintChart = async (rowId, entries) => {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        const ids = (entries || []).map((e) => e && e.id).filter(Boolean);
+        if (!ids.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
+        const byId = await resolveComickIds(ids);
+        const origById = new Map();
+        for (const oid of ids.filter((id) => String(id).startsWith('orig:'))) {
+          try { origById.set(oid, (await api(`/api/originals/${String(oid).slice(5)}`)).data); } catch {}
+        }
+        let list = ids.map((id) => byId.get(id) || (origById.has(id) ? { ...origById.get(id), orig: true } : null)).filter(Boolean);
+        if (needFilter) list = applyMatureFilter(list);
+        const fresh = [];
+        for (const m of list) {
+          if (!m || !m.id || used.has(m.id)) continue;
+          used.add(m.id);
+          fresh.push(m);
+          if (fresh.length >= 18) break;
+        }
+        if (!fresh.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
+        fresh.forEach((m) => { if (!m.orig && hasNewChapters(m, progressMap)) m._new = true; });
+        row.innerHTML = fresh.map((m, i) => (m.orig ? origCard(m) : mangaCard(m, { h: true, rank: i + 1 }))).join('');
+        wireCards(row);
+      };
+      await paintChart('trendRow', charts && charts.trending);
+      await paintChart('followRow', charts && charts.followed);
+    })());
   }
   await Promise.all(jobs);
   // Recommended starts only after the rows above (plus whatever the sidebar
