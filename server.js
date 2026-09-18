@@ -807,6 +807,15 @@ function decodeEntities(s) {
   return String(s || '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&#x27;/gi, "'")
+    // Numeric entities from upstream/WordPress text (&#8217; → ’, &#x2019; → ’).
+    .replace(/&#(\d{1,7});/g, (_, n) => {
+      const c = parseInt(n, 10);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : _;
+    })
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, h) => {
+      const c = parseInt(h, 16);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : _;
+    })
     .trim();
 }
 function absUrl(maybeRel, base) {
@@ -1021,7 +1030,7 @@ async function comickChapters(source, mangaUrl) {
     const list = (data.chapters || []).map((c) => ({
       id: String(c.id ?? c.number),
       number: Number(c.number) || 0,
-      title: c.title || '',
+      title: decodeEntities(c.title || ''),
       url: c.url,
     })).filter((c) => c.url);
     if (list.length) return list.sort((a, b) => a.number - b.number);
@@ -1079,7 +1088,7 @@ function normResult(source, r) {
   return {
     id: cxEncode(source, url),
     source,
-    title: r.title,
+    title: decodeEntities(r.title),
     url,
     cover: r.coverImage || '',
     latestChapter: r.latestChapter || 0,
