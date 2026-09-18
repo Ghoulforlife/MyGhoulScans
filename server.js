@@ -820,7 +820,9 @@ function decodeEntities(s) {
 }
 function absUrl(maybeRel, base) {
   try {
-    const u = String(maybeRel || '').trim().replace(/\s+/g, '');
+    // Keep inner spaces intact — `new URL` below percent-encodes them (%20).
+    // Stripping whitespace corrupts CDN paths like ".../Solo Leveling/1.jpg".
+    const u = String(maybeRel || '').trim();
     if (!u || u.startsWith('data:')) return '';
     return new URL(u, base).toString();
   } catch { return ''; }
@@ -833,7 +835,8 @@ function imgTagSrc(tag) {
     const m = tag.match(new RegExp(n + '\\s*=\\s*(["\'])(.*?)\\1', 'is'));
     return m ? m[2].trim() : '';
   };
-  const one = (v) => String(v || '').replace(/\s+/g, '');
+  // Single-URL attributes keep inner spaces (absUrl encodes them as %20).
+  const one = (v) => String(v || '').trim();
   const srcset = attr('data-srcset') || attr('srcset');
   if (srcset) {
     const first = srcset.split(',')[0].trim().split(/\s+/)[0];
@@ -841,7 +844,7 @@ function imgTagSrc(tag) {
   }
   return one(attr('data-src')) || one(attr('data-lazy-src')) || one(attr('data-original')) || one(attr('src'));
 }
-const JUNK_IMG = /(logo|avatar|banner|icon|ads?-|advert|gravatar|emoji|spinner|loading|placeholder|favicon|\.svg(\?|$))/i;
+const JUNK_IMG = /(logo|avatar|userpic|banner|icon|[\W_]ads?(?=[-_.]|$)|advert|free[_-]?ads?|premium|btn[_-]?close|close[_-]?btn|pubadx|demon-(logo|title)|gravatar|emoji|spinner|loading|placeholder|favicon|\.svg(\?|$))/i;
 function cleanImgList(urls) {
   const out = [];
   const seen = new Set();

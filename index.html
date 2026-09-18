@@ -1778,7 +1778,7 @@ const DEFAULT_PREFS = {
   mode: 'dark',
   mature: false,
   reader: { ...DEFAULT_READER },
-  sections: { latest: true, popular: true, comix: true },
+  sections: { latest: true, popular: true },
 };
 const PREFS_KEY = 'mgs_settings';
 
@@ -2040,7 +2040,6 @@ function openSettings() {
       <div>
         <p class="set-h">Home sections</p>
         ${sw('setSecLatest', s.latest, 'Latest updates')}
-        ${sw('setSecComix', s.comix, 'Comix charts (popular / followed / hot)')}
         ${sw('setSecPopular', s.popular, 'Updates (Hot / New)')}
       </div>
       <div>
@@ -2075,7 +2074,6 @@ function openSettings() {
       reader: prefs.reader,
       sections: {
         latest: $('#setSecLatest').checked,
-        comix: $('#setSecComix').checked,
         popular: $('#setSecPopular').checked,
       },
     });
@@ -2294,9 +2292,6 @@ async function renderHome() {
           </div>
         </div>
         ${sec.latest ? section('Latest updates', 'latestRow', 'all sources') : ''}
-        ${sec.comix ? section('Most Recent Popular', 'comixTrendRow', 'comix.to') : ''}
-        ${sec.comix ? section('Most Followed New Comics', 'comixFollowRow', 'comix.to') : ''}
-        ${sec.comix ? section('Hot Right Now', 'comixHotRow', 'comix.to') : ''}
         ${sec.popular ? `<div class="sect" id="updatesSect">
           <div class="upd-head">
             <h2 class="sect-title" style="margin:0">Updates</h2>
@@ -2407,46 +2402,6 @@ async function renderHome() {
     jobs.push(fanout(MAJOR_SOURCES, (s) => latestUrl(s))
       .then((items) => paintRowItems('latestRow', items, { progressMap, filterAdult: needFilter }))
       .catch(() => paintRowItems('latestRow', [])));
-  }
-  // Comix charts: one /api/comix/home fetch feeds all three ranked rows
-  // (snapshot-backed on the server, so it loads even though comix.to blocks
-  // datacenters). Rank badges match the chart look.
-  if (sec.comix && (document.getElementById('comixTrendRow') || document.getElementById('comixFollowRow') || document.getElementById('comixHotRow'))) {
-    jobs.push((async () => {
-      let feeds = null;
-      let comixErr = '';
-      try {
-        feeds = (await api('/api/comix/home')).data || null;
-      } catch (e) { feeds = null; comixErr = (e && e.message) || 'load failed'; }
-      const paintRanked = (rowId, items) => {
-        const row = document.getElementById(rowId);
-        if (!row) return;
-        let list = needFilter ? applyMatureFilter(items || []) : (items || []);
-        const fresh = [];
-        for (const m of list) {
-          if (!m || !m.id || used.has(m.id)) continue;
-          used.add(m.id);
-          fresh.push(m);
-          if (fresh.length >= 18) break;
-        }
-        if (!fresh.length) {
-          row.innerHTML = `<div class="centered small">${!feeds ? `Could not load charts (${esc(comixErr)})` : 'Nothing here yet'}</div>`;
-          return;
-        }
-        fresh.forEach((m) => { if (hasNewChapters(m, progressMap)) m._new = true; });
-        row.innerHTML = fresh.map((m, i) => mangaCard(m, { h: true, rank: i + 1 })).join('');
-        wireCards(row);
-      };
-      if (!feeds) {
-        paintRanked('comixTrendRow', []);
-        paintRanked('comixFollowRow', []);
-        paintRanked('comixHotRow', []);
-        return;
-      }
-      paintRanked('comixTrendRow', feeds.trending);
-      paintRanked('comixFollowRow', feeds.follows);
-      paintRanked('comixHotRow', feeds.hot);
-    })());
   }
   await Promise.all(jobs);
   // Recommended starts only after the rows above (plus whatever the sidebar
