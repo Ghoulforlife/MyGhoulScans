@@ -1077,6 +1077,7 @@ input:checked + .switch::after { transform: translateX(18px); background: #fff; 
 
 /* ---------- chapter read counter + expand ---------- */
 .read-count { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.cdate { color: var(--muted); font-size: 12px; white-space: nowrap; margin-right: 10px; }
 .read-count.none { opacity: .45; }
 .read-count::before { content: ""; }
 .pg-count { color: var(--muted); }

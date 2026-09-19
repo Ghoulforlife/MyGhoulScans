@@ -358,6 +358,76 @@ function extractPages(html, chapterUrl) {
 const pagesCache = new Map();
 const PAGES_TTL = 10 * 60 * 1000;
 
+// Chapter release dates live on the source manga page (wp-manga themes):
+// <li class="wp-manga-chapter"><a href=".../chapter-68/">…</a>
+// <span class="chapter-release-date"><i>07.01.2026</i></span></li>
+// Upstream has no dates, so parse them here (best-effort) and attach by URL.
+function parseChapterDate(s) {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  const now = Date.now();
+  let m = t.match(/(\d{1,2})[.](\d{1,2})[.](\d{4})/); // 07.01.2026
+  if (m) {
+    const d = Date.UTC(+m[3], +m[2] - 1, +m[1]);
+    return isNaN(d) ? null : d;
+  }
+  m = t.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/); // January 7, 2026
+  if (m) {
+    const d = Date.parse(`${m[1]} ${m[2]}, ${m[3]}`);
+    return isNaN(d) ? null : d;
+  }
+  m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); // 2026-01-07
+  if (m) {
+    const d = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d) ? null : d;
+  }
+  m = t.toLowerCase().match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/);
+  if (m) {
+    const mult = { second: 1e3, minute: 6e4, hour: 36e5, day: 864e5, week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5 };
+    return now - (+m[1]) * (mult[m[2]] || 864e5);
+  }
+  if (/yesterday/i.test(t)) return now - 864e5;
+  if (/today|just now/i.test(t)) return now;
+  return null;
+}
+function parseChapterDates(html, base) {
+  const map = new Map();
+  for (const li of html.matchAll(/<li[^>]*wp-manga-chapter[^>]*>([\s\S]{0,1200}?)(?=<li[^>]*wp-manga-chapter|<\/ul>)/gi)) {
+    const block = li[0].slice(0, 1500);
+    const a = block.match(/<a[^>]+href=["']([^"']+)["']/i);
+    if (!a) continue;
+    const url = absUrl(a[1], base);
+    const d = block.match(/chapter-release-date[^>]*>\s*(?:<[^>]+>)?\s*([^<]{1,40})/i);
+    const ts = d ? parseChapterDate(decodeEntities(d[1])) : null;
+    if (url && ts) map.set(url.replace(/\/$/, ''), ts);
+  }
+  return map;
+}
+const chapterDatesCache = new Map(); // mangaUrl -> { map, at }
+const CHAPTER_DATES_TTL = 10 * 60 * 1000;
+async function chapterDatesFor(source, mangaUrl, fetchFn) {
+  if (source === 'comix') return new Map();
+  const hit = chapterDatesCache.get(mangaUrl);
+  if (hit && Date.now() - hit.at < CHAPTER_DATES_TTL) return hit.map;
+  try {
+    const html = await Promise.race([
+      fetchFn(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('dates timeout')), 8000)),
+    ]);
+    const map = parseChapterDates(html, mangaUrl);
+    if (chapterDatesCache.size > 200) chapterDatesCache.delete(chapterDatesCache.keys().next().value);
+    chapterDatesCache.set(mangaUrl, { map, at: Date.now() });
+    return map;
+  } catch { return new Map(); }
+}
+function attachChapterDates(list, map) {
+  for (const c of list) {
+    const ts = map.get(String(c.url || '').replace(/\/$/, ''));
+    if (ts) c.date = ts;
+  }
+  return list;
+}
+
 async function comickChapters(env, source, mangaUrl) {
   if (source === 'comix') return comixChapters(mangaUrl);
   try {
@@ -368,7 +438,10 @@ async function comickChapters(env, source, mangaUrl) {
       title: decodeEntities(c.title || ''),
       url: c.url,
     })).filter((c) => c.url);
-    if (list.length) return list.sort((a, b) => a.number - b.number);
+    if (list.length) {
+      const dates = await chapterDatesFor(source, mangaUrl, () => fetchHtml(mangaUrl));
+      return attachChapterDates(list.sort((a, b) => a.number - b.number), dates);
+    }
   } catch {}
   const ajaxUrl = mangaUrl.replace(/\/$/, '') + '/ajax/chapters/';
   const res = await fetch(ajaxUrl, {
@@ -389,7 +462,7 @@ async function comickChapters(env, source, mangaUrl) {
     out.push({ id: url, number: num ? parseFloat(num) : 0, title: label, url });
   }
   if (!out.length) throw new Error('Chapter list unavailable');
-  return out.sort((a, b) => a.number - b.number);
+  return attachChapterDates(out.sort((a, b) => a.number - b.number), parseChapterDates(html, mangaUrl));
 }
 
 function extractLatestWp(html, base) {
