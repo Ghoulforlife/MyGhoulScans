@@ -1114,6 +1114,7 @@ input:checked + .switch::after { transform: translateX(18px); background: #fff; 
 
 /* ---------- chapter read counter + expand ---------- */
 .read-count { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.cdate { color: var(--muted); font-size: 12px; white-space: nowrap; margin-right: 10px; }
 .read-count.none { opacity: .45; }
 .read-count::before { content: ""; }
 .pg-count { color: var(--muted); }
@@ -2860,7 +2861,7 @@ function chapterItemHtml(c, progress, counts) {
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</span>
       ${c.external ? '<span class="ext-flag" title="Reads in-app via another source">&#8599;</span>' : ''}
       ${isCurrent ? '<span class="resume-flag">Last read &middot; p.' + (progress.page + 1) + '</span>' : ''}
-      <span class="cmeta"><span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span></span>
+      <span class="cmeta">${c.date ? `<span class="cdate">${esc(timeAgo(c.date))}</span>` : ''}<span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span></span>
     </div>`;
 }
 function chapterListHtml(chapters, progress, counts) {
@@ -2878,6 +2879,25 @@ function chapterListHtml(chapters, progress, counts) {
 function chapNum(c) {
   const n = parseFloat(c && c.number);
   return isNaN(n) ? NaN : n;
+}
+// Relative chapter age ("1 hour ago", "a day", "20 days", "a month").
+function timeAgo(ts) {
+  const t = Number(ts);
+  if (!t || isNaN(t)) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m === 1 ? '1 min ago' : `${m} mins ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return h === 1 ? '1 hour ago' : `${h} hours ago`;
+  const d = Math.floor(h / 24);
+  if (d < 2) return 'a day';
+  if (d < 30) return `${d} days`;
+  if (d < 60) return 'a month';
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return mo === 1 ? 'a month' : `${mo} months`;
+  const y = Math.floor(mo / 12);
+  return y <= 1 ? 'a year' : `${y} years`;
 }
 // A chapter entry is navigable only when it carries a usable url.
 function chapterUrl(c) {
