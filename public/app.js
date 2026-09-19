@@ -1053,7 +1053,6 @@ async function renderHome() {
         const row = document.getElementById(rowId);
         if (!row) return;
         const ids = (entries || []).map((e) => e && e.id).filter(Boolean);
-        if (!ids.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
         const byId = await resolveComickIds(ids);
         const origById = new Map();
         for (const oid of ids.filter((id) => String(id).startsWith('orig:'))) {
@@ -1071,6 +1070,21 @@ async function renderHome() {
           used.add(m.id);
           fresh.push(m);
           if (fresh.length >= 18) break;
+        }
+        // Backfill sparse rows from the latest-updates feeds (all sources
+        // mixed) so the row is never bare — quiet weeks, heavy overlap with
+        // rows above, or thin community data all end up filled from sources.
+        if (fresh.length < 12) {
+          try {
+            const pool = await fanout(MAJOR_SOURCES, (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`);
+            const filtered = needFilter ? applyMatureFilter(pool) : pool;
+            for (const m of filtered) {
+              if (fresh.length >= 18) break;
+              if (!m || !m.id || used.has(m.id)) continue;
+              used.add(m.id);
+              fresh.push(m);
+            }
+          } catch {}
         }
         if (!fresh.length) { row.innerHTML = '<div class="centered small">Nothing here yet — read and bookmark titles to fill these charts.</div>'; return; }
         fresh.forEach((m) => { if (!m.orig && hasNewChapters(m, progressMap)) m._new = true; });
