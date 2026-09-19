@@ -1215,9 +1215,9 @@ app.get('/api/comick/sources', async (req, res) => {
 
 // Search one or more sources (fan-out, merged). ?q=..&source=mangaread or
 // ?sources=mangaread,flamecomics (default: COMICK_SOURCES).
-// Verified upstream 2026-09-17: only these return search results — the rest
-// are Shutdown (bato, mangapark, ...) or empty (mangasushi, madarascans).
-// Verified sources go first so a 67-source request still searches the best.
+// Only the verified working sources are ever queried. Stray upstream sources
+// (atsumoe, likemanga, …) return titles whose pages can't be read in-app
+// (JS apps / private APIs), so they are left out entirely.
 app.get('/api/comick/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim().slice(0, 80);
@@ -1225,10 +1225,7 @@ app.get('/api/comick/search', async (req, res) => {
     const single = String(req.query.source || '').trim().toLowerCase();
     const multi = String(req.query.sources || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
-    const sources = [...new Set([
-      ...SEARCH_PRIORITY.filter((s) => requested.includes(s)),
-      ...requested.filter((s) => !SEARCH_DEAD.has(s)),
-    ])].slice(0, 6);
+    const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s)).slice(0, 6);
     const settled = await Promise.allSettled(sources.map(async (source) => {
       const data = await comickApi('/api/search', { method: 'POST', body: { query: q, source } });
       return (data.results || []).map((r) => normResult(source, r));

@@ -1059,6 +1059,10 @@ async function renderHome() {
         for (const oid of ids.filter((id) => String(id).startsWith('orig:'))) {
           try { origById.set(oid, (await api(`/api/originals/${String(oid).slice(5)}`)).data); } catch {}
         }
+        // Legacy follows may store a bare originals uuid (no orig: prefix).
+        for (const oid of ids.filter((id) => !String(id).startsWith('cx:') && !String(id).startsWith('orig:'))) {
+          try { origById.set(oid, (await api(`/api/originals/${encodeURIComponent(String(oid))}`)).data); } catch {}
+        }
         let list = ids.map((id) => byId.get(id) || (origById.has(id) ? { ...origById.get(id), orig: true } : null)).filter(Boolean);
         if (needFilter) list = applyMatureFilter(list);
         const fresh = [];

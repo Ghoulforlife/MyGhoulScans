@@ -868,10 +868,8 @@ export default {
         const single = String(q.get('source') || '').trim().toLowerCase();
         const multi = String(q.get('sources') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
         const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
-        const sources = [...new Set([
-          ...SEARCH_PRIORITY.filter((s) => requested.includes(s)),
-          ...requested.filter((s) => !SEARCH_DEAD.has(s)),
-        ])].slice(0, 6);
+        // Only the verified working sources are ever queried (see server.js).
+        const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s)).slice(0, 6);
         const settled = await Promise.allSettled(sources.map(async (source) => {
           const data = await comickApi(env, '/api/search', { method: 'POST', body: { query, source } });
           return (data.results || []).map((r) => normResult(source, r));
@@ -1320,8 +1318,8 @@ async function handleAccount(req, env, p, q) {
     // Comics (bookmarks).
     if (p === '/charts' && req.method === 'GET') {
       needDb();
-      const trending = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads WHERE created_at >= datetime('now', '-7 days') AND manga_id NOT LIKE 'cx:comix:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
-      const followed = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM follows WHERE manga_id NOT LIKE 'cx:comix:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
+      const trending = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM reads WHERE created_at >= datetime('now', '-7 days') AND manga_id NOT LIKE 'cx:comix:%' AND manga_id NOT LIKE 'cx:atsumoe:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
+      const followed = await DB.prepare(`SELECT manga_id AS id, COUNT(*) AS n FROM follows WHERE manga_id NOT LIKE 'cx:comix:%' AND manga_id NOT LIKE 'cx:atsumoe:%' GROUP BY manga_id ORDER BY n DESC LIMIT 18`).bind().all().catch(() => ({ results: [] }));
       return json({ trending: trending.results, followed: followed.results }, 200, 60);
     }
     // Community leaderboard (public): top readers by RP, reading hours,
