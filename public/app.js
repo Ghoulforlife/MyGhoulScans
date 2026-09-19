@@ -145,7 +145,7 @@ function mangaCard(data, opts = {}) {
       <div class="meta">
         <div class="title">${esc(titleOf(data))}</div>
         <div class="sub">${status ? statusBadge(status) : ''}<span>${esc(data.source || '')}</span></div>
-        ${lbl ? `<div class="chapters">Ch. ${esc(lbl)}</div>` : ''}
+        ${lbl ? `<div class="chapters">Ch. ${esc(lbl)}${data.latestChapterDate ? ` &middot; ${esc(timeAgo(data.latestChapterDate))}` : ''}</div>` : ''}
       </div>
     </div>`;
 }
@@ -1097,7 +1097,7 @@ function trendItemHtml(m, rank) {
       ${img ? `<img class="t-cover" loading="lazy" referrerpolicy="no-referrer" src="${img}" alt="" />` : '<div class="t-cover"></div>'}
       <div class="t-info">
         <div class="t-title">${esc(titleOf(m))}</div>
-        <div class="t-meta">${lbl ? `Ch. ${esc(lbl)}` : esc(m.source || '')}</div>
+        <div class="t-meta">${lbl ? `Ch. ${esc(lbl)}${m.latestChapterDate ? ` &middot; ${esc(timeAgo(m.latestChapterDate))}` : ''}` : esc(m.source || '')}</div>
       </div>
     </div>`;
 }

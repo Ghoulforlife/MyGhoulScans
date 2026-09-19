@@ -381,10 +381,15 @@ function parseChapterDate(s) {
     const d = Date.UTC(+m[1], +m[2] - 1, +m[3]);
     return isNaN(d) ? null : d;
   }
-  m = t.toLowerCase().match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/);
+  m = t.toLowerCase().replace(/\bsecs?\b/g, 'second').replace(/\bmins?\b/g, 'minute').replace(/\bhrs?\b/g, 'hour').match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/);
   if (m) {
     const mult = { second: 1e3, minute: 6e4, hour: 36e5, day: 864e5, week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5 };
     return now - (+m[1]) * (mult[m[2]] || 864e5);
+  }
+  m = t.toLowerCase().match(/\b(an?)\s+(second|minute|hour|day|week|month|year)\s+ago/); // "a day ago"
+  if (m) {
+    const mult = { second: 1e3, minute: 6e4, hour: 36e5, day: 864e5, week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5 };
+    return now - mult[m[2]];
   }
   if (/yesterday/i.test(t)) return now - 864e5;
   if (/today|just now/i.test(t)) return now;
@@ -478,11 +483,19 @@ function extractLatestWp(html, base) {
     seen.add(url);
     const img = b.match(/<img[^>]{0,900}>/i);
     const ch = b.match(/<a[^>]+href=["']([^"']*chapter[^"']*)["'][^>]*>\s*([^<]{1,50})</i);
+    // Latest-chapter age: <span class="post-on">2 mins ago</span> after the link.
+    let latestChapterDate = null;
+    if (ch) {
+      const after = b.slice(ch.index + ch[0].length, ch.index + ch[0].length + 400);
+      const t = after.match(/post-on[^>]*>\s*([^<]{1,40})/i);
+      if (t) latestChapterDate = parseChapterDate(decodeEntities(t[1]));
+    }
     out.push({
       title: decodeEntities(link[2]).trim(),
       url,
       cover: img ? absUrl(imgTagSrc(img[0]), base) : '',
       latestChapter: ch ? decodeEntities(ch[2]).trim().replace(/^chapter\s+/i, '') : '',
+      latestChapterDate,
     });
   }
   return out;
@@ -918,7 +931,7 @@ export default {
         const html = await fetchHtml(base);
         const items = extractLatestWp(html, base);
         if (!items.length) throw new Error('Latest updates unavailable for this source');
-        let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })) };
+        let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter, latestChapterDate: r.latestChapterDate || null })) };
         if (enrich) data = { data: await enrichItems(data.data.slice(0, 12)).then((m) => data.data.slice(0, 12).map((it) => ({ ...it, ...(m.get(it.id) || {}) }))) };
         latestCache.set(key, { data, at: Date.now() });
         return json(data, 200, 60);
@@ -969,7 +982,7 @@ export default {
         const html = await fetchHtml(gurl);
         const items = extractLatestWp(html, gurl);
         if (!items.length) throw new Error('No titles in this genre on this source');
-        let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter })), page };
+        let data = { data: items.map((r) => ({ ...normResult(source, { ...r, coverImage: r.cover, latestChapter: 0 }), latestChapterLabel: r.latestChapter, latestChapterDate: r.latestChapterDate || null })), page };
         if (enrich) {
           const slice = data.data.slice(0, 15);
           data = { data: await enrichItems(slice).then((m) => slice.map((it) => ({ ...it, ...(m.get(it.id) || {}) }))), page };
