@@ -682,8 +682,9 @@ const LB_TTL = 60 * 1000;
 app.get('/api/leaderboard', (req, res) => {
   const by = String(req.query.by || 'rp');
   if (!LB_BOARDS.includes(by)) return res.status(400).json({ error: 'unknown board' });
+  // ?fresh=1 skips the cache (Refresh button) but still refreshes it.
   const hit = lbCache.get(by);
-  if (hit && Date.now() - hit.at < LB_TTL) return res.json(hit.data);
+  if (!req.query.fresh && hit && Date.now() - hit.at < LB_TTL) return res.json(hit.data);
   const data = { by, data: db.leaderboard(by) };
   lbCache.set(by, { data, at: Date.now() });
   res.json(data);

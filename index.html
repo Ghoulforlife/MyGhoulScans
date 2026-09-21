@@ -4958,7 +4958,7 @@ const LB_TABS = [
   ['dislikes', 'Dislikes'],
 ];
 const LB_HINT = {
-  rp: 'Ranked by Reader Points earned from reading.',
+  rp: 'Ranked by Reader Points earned from comment likes.',
   hours: 'Ranked by estimated time spent reading.',
   bookmarks: 'Ranked by titles in each reader library.',
   likes: 'Ranked by likes received on comments.',
@@ -4973,12 +4973,14 @@ function lbValueLabel(by, v) {
   }
   return n.toLocaleString();
 }
-async function renderLeaderboard(active) {
+async function renderLeaderboard(active, fresh) {
   const by = LB_TABS.some(([id]) => id === active) ? active : 'rp';
   updateRouteMeta('leaderboard');
   view.innerHTML = `
-    <div class="page-title">Leaderboard &mdash; top readers</div>
-    <p class="small" style="margin:-10px 0 16px">${esc(LB_HINT[by])}</p>
+    <div class="page-title" style="display:flex;align-items:center;gap:10px">Leaderboard &mdash; top readers
+      <button class="btn ghost" id="lbRefresh" style="margin-left:auto;font-size:13px">Refresh</button>
+    </div>
+    <p class="small" style="margin:-10px 0 16px">${esc(LB_HINT[by])}<span id="lbMeta"></span></p>
     <div class="lb-tabs" role="tablist">
       ${LB_TABS.map(([id, label]) => `<button class="lb-tab${id === by ? ' active' : ''}" data-lb="${id}" role="tab">${esc(label)}</button>`).join('')}
     </div>
@@ -4986,9 +4988,12 @@ async function renderLeaderboard(active) {
   view.querySelectorAll('.lb-tab').forEach((b) => {
     b.addEventListener('click', () => renderLeaderboard(b.dataset.lb));
   });
+  view.querySelector('#lbRefresh')?.addEventListener('click', () => renderLeaderboard(by, true));
   const list = document.getElementById('lbList');
   try {
-    const { data } = await api(`/api/leaderboard?by=${encodeURIComponent(by)}`);
+    const { data } = await api(`/api/leaderboard?by=${encodeURIComponent(by)}${fresh ? `&fresh=1&_t=${Date.now()}` : ''}`);
+    const meta = document.getElementById('lbMeta');
+    if (meta && data && data.length) meta.textContent = ` · ${data.length} ranked · updated just now`;
     if (!data || !data.length) { list.innerHTML = '<div class="centered">Nobody is on the board yet. Read, bookmark, or comment to claim a spot!</div>'; return; }
     const max = Math.max(...data.map((r) => Number(r.value || 0)), 1);
     list.innerHTML = data.map((u, i) => {

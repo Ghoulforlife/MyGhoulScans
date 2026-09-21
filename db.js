@@ -518,7 +518,13 @@ function setEquipped(userId, col, value) {
 }
 
 // ---------- Chapter reads ----------
+// +1 RP the first time a signed-in user opens a chapter (re-opens pay nothing,
+// guests earn nothing).
 function addRead(mangaId, chapterId, userId) {
+  if (userId) {
+    const seen = db.prepare('SELECT 1 FROM reads WHERE user_id = ? AND manga_id = ? AND chapter_id = ? LIMIT 1').get(userId, mangaId, chapterId);
+    if (!seen) db.prepare('UPDATE users SET rp = COALESCE(rp, 0) + 1 WHERE id = ?').run(userId);
+  }
   db.prepare('INSERT INTO reads (manga_id, chapter_id, user_id) VALUES (?, ?, ?)').run(mangaId, chapterId, userId || null);
 }
 

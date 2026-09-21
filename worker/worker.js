@@ -1289,11 +1289,15 @@ async function handleAccount(req, env, p, q) {
       await DB.prepare('DELETE FROM progress WHERE user_id = ? AND manga_id = ?').bind(me.id, decodeURIComponent(m[1])).run();
       return json({ ok: true });
     }
-    // Chapter reads (counters + popularity)
+    // Chapter reads (counters + popularity +1 RP on first open per chapter)
     if (p === '/reads' && req.method === 'POST') {
       needDb();
       const { mangaId, chapterId } = await readJson(req);
       if (!mangaId || !chapterId) return err('mangaId and chapterId are required', 400);
+      if (me) {
+        const seen = await DB.prepare('SELECT 1 FROM reads WHERE user_id = ? AND manga_id = ? AND chapter_id = ? LIMIT 1').bind(me.id, mangaId, chapterId).first().catch(() => null);
+        if (!seen) await DB.prepare('UPDATE users SET rp = COALESCE(rp, 0) + 1 WHERE id = ?').bind(me.id).run().catch(() => {});
+      }
       await DB.prepare('INSERT INTO reads (manga_id, chapter_id, user_id) VALUES (?, ?, ?)')
         .bind(mangaId, chapterId, me ? me.id : null).run().catch(() => {});
       return json({ ok: true });
