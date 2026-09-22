@@ -325,7 +325,7 @@ function titleHash(id) {
 
 const ROUTE_TITLES = {
   search: 'Search', genre: 'Browse', library: 'My Library',
-  popular: 'Top 10 — most read', leaderboard: 'Leaderboard — top readers', originals: 'Originals', account: 'Account settings',
+  popular: 'Top 10 — most read', leaderboard: 'Leaderboard — top readers', discover: 'Discover — random picks', originals: 'Originals', account: 'Account settings',
   shop: 'RP Shop',
 };
 function updateRouteMeta(page, title, desc) {
@@ -354,6 +354,7 @@ function route() {
   if (page === 'library') return renderLibrary();
   if (page === 'popular') return renderPopular();
   if (page === 'leaderboard') return renderLeaderboard();
+  if (page === 'discover') return renderDiscover();
   if (page === 'originals') return renderOriginals();
   if (page === 'original') return renderOriginalSeries(parts[1]);
   if (page === 'shop') return renderShop();
@@ -984,7 +985,7 @@ async function renderHome() {
       <aside class="home-side">
         <div class="sect side-sect" style="margin:0">
           <div class="side-tabs">
-            <button class="tab-btn active">Discover</button>
+            <button class="tab-btn active" id="discoverTab" title="20 random comics from every source">Discover</button>
           </div>
           <div class="tab-pane active">
             <p class="small" style="padding:12px">Search any title above, or <a href="#/popular">browse the community chart</a>.</p>
@@ -1008,6 +1009,7 @@ async function renderHome() {
     const dist = row.clientWidth - 120;
     row.scrollBy({ left: b.classList.contains('prev') ? -dist : dist, behavior: 'smooth' });
   }));
+  view.querySelector('#discoverTab')?.addEventListener('click', () => { location.hash = '#/discover'; });
   fillResume(progressMap);
 
   const needFilter = !loadPrefs().mature;
@@ -1277,6 +1279,7 @@ function initRecommended(needFilter) {
       }
       let fresh = [];
       let attempts = 0;
+      let lastBatch = [];
       while (!fresh.length && attempts < 4) {
         if (state.sp > 50) { state.done = true; break; }
         const slug = state.slugs[state.si % state.slugs.length];
@@ -1287,12 +1290,23 @@ function initRecommended(needFilter) {
           const items = await fanout(MAJOR_SOURCES, (s) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${Math.min(state.sp, 50)}&enrich=1`);
           let list = items || [];
           if (needFilter) list = applyMatureFilter(list);
+          lastBatch = list;
           for (const m of list) {
             if (!m || !m.id || state.ids.has(m.id) || homeSeen.has(m.id)) continue;
             state.ids.add(m.id);
             fresh.push(m);
           }
         } catch {}
+      }
+      // Never show an empty shelf when the sources have data: overlap with
+      // rows above is nicer than nothing, so relax the dedupe as fallback.
+      if (!fresh.length && lastBatch.length) {
+        for (const m of lastBatch) {
+          if (!m || !m.id || state.ids.has(m.id)) continue;
+          state.ids.add(m.id);
+          fresh.push(m);
+          if (fresh.length >= 12) break;
+        }
       }
       state.items.push(...fresh);
       paint(true);
@@ -3651,6 +3665,78 @@ async function renderLeaderboard(active, fresh) {
   } catch (e) {
     list.innerHTML = `<div class="centered">Could not load leaderboard: ${esc(e.message)}</div>`;
   }
+}
+
+// ---------- discover (20 random picks from every source, shuffled) ----------
+async function renderDiscover() {
+  updateRouteMeta('discover');
+  view.innerHTML = `
+    <div class="page-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Discover
+      <span class="sect-sub">20 random picks from every source</span>
+      <button class="btn primary" id="discoverShuffle" style="margin-left:auto;font-size:13px">Shuffle</button>
+    </div>
+    <div class="grid" id="discoverGrid">${spinner(8)}</div>
+    <p class="small centered" id="discoverMeta" style="margin-top:14px"></p>`;
+  const needFilter = !loadPrefs().mature;
+  const shuffle = (arr) => {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+  const load = async () => {
+    const grid = document.getElementById('discoverGrid');
+    const meta = document.getElementById('discoverMeta');
+    if (!grid) return;
+    grid.innerHTML = spinner(8);
+    if (meta) meta.textContent = '';
+    try {
+      const pool = [];
+      const seen = new Set();
+      const take = (m) => {
+        if (!m || !m.id || seen.has(m.id)) return;
+        seen.add(m.id);
+        pool.push(m);
+      };
+      const jobs = [];
+      // Latest updates from every major source (full card data, fast).
+      jobs.push(fanout(MAJOR_SOURCES, (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`).then((items) => (items || []).forEach(take)).catch(() => {}));
+      // Community charts (every source mixed, incl. non-WP ones) — resolved.
+      jobs.push((async () => {
+        try {
+          const charts = await api('/api/charts');
+          const ids = [...(charts.trending || []), ...(charts.followed || [])].map((e) => e && e.id).filter(Boolean);
+          const byId = await resolveComickIds(ids);
+          [...byId.values()].forEach(take);
+        } catch {}
+      })());
+      // One random genre for picks beyond the feeds.
+      jobs.push((async () => {
+        try {
+          const menu = (await comickGenres()).filter((g) => g.id && !['manga', 'manhwa', 'manhua'].includes(g.id) && (loadPrefs().mature || !isAdultSlug(g.id)));
+          if (!menu.length) return;
+          const slug = menu[Math.floor(Math.random() * menu.length)].id;
+          const items = await fanout(MAJOR_SOURCES, (s) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=1${needFilter ? '&enrich=1' : ''}`);
+          (items || []).forEach(take);
+        } catch {}
+      })());
+      await Promise.all(jobs);
+      const filtered = needFilter ? applyMatureFilter(pool) : pool;
+      const list = shuffle(filtered.filter((m) => m && m.id)).slice(0, 20);
+      if (!list.length) { grid.innerHTML = '<div class="centered">Nothing found — try Shuffle.</div>'; return; }
+      grid.innerHTML = list.map((m) => mangaCard(m)).join('');
+      wireCards(grid);
+      if (meta) {
+        const srcs = [...new Set(list.map((m) => m.source || 'source'))];
+        meta.textContent = `${list.length} picks across ${srcs.length} source${srcs.length === 1 ? '' : 's'} (${srcs.slice(0, 5).join(' · ')})`;
+      }
+    } catch (e) {
+      grid.innerHTML = `<div class="centered">Could not load: ${esc(e.message)}</div>`;
+    }
+  };
+  document.getElementById('discoverShuffle')?.addEventListener('click', load);
+  load();
 }
 
 // ---------- search input ----------
