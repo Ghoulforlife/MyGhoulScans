@@ -2351,7 +2351,7 @@ async function renderHome() {
       <aside class="home-side">
         <div class="sect side-sect" style="margin:0">
           <div class="side-tabs">
-            <button class="tab-btn active" id="discoverTab" title="20 random comics from every source">Discover</button>
+            <button class="tab-btn active" id="discoverTab" title="50 random comics from every source">Discover</button>
           </div>
           <div class="tab-pane active">
             <p class="small" style="padding:12px">Search any title above, or <a href="#/popular">browse the community chart</a>.</p>
@@ -5039,7 +5039,7 @@ async function renderDiscover() {
   updateRouteMeta('discover');
   view.innerHTML = `
     <div class="page-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Discover
-      <span class="sect-sub">20 random picks from every source</span>
+      <span class="sect-sub">50 random picks from every source</span>
       <button class="btn primary" id="discoverShuffle" style="margin-left:auto;font-size:13px">Shuffle</button>
     </div>
     <div class="grid" id="discoverGrid">${spinner(8)}</div>
@@ -5090,7 +5090,7 @@ async function renderDiscover() {
       })());
       await Promise.all(jobs);
       const filtered = needFilter ? applyMatureFilter(pool) : pool;
-      const list = shuffle(filtered.filter((m) => m && m.id)).slice(0, 20);
+      const list = shuffle(filtered.filter((m) => m && m.id)).slice(0, 50);
       if (!list.length) { grid.innerHTML = '<div class="centered">Nothing found — try Shuffle.</div>'; return; }
       grid.innerHTML = list.map((m) => mangaCard(m)).join('');
       wireCards(grid);
