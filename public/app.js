@@ -985,7 +985,7 @@ async function renderHome() {
       <aside class="home-side">
         <div class="sect side-sect" style="margin:0">
           <div class="side-tabs">
-            <button class="tab-btn active" id="discoverTab" title="50 random comics from every source">Discover</button>
+            <button class="tab-btn active" id="discoverTab" title="50 deep cuts from every source, excluding home">Discover</button>
           </div>
           <div class="tab-pane active">
             <p class="small" style="padding:12px">Search any title above, or <a href="#/popular">browse the community chart</a>.</p>
@@ -3667,17 +3667,24 @@ async function renderLeaderboard(active, fresh) {
   }
 }
 
-// ---------- discover (20 random picks from every source, shuffled) ----------
+// ---------- discover (50 deep cuts: never the home rows) ----------
+// Only random deep-genre pages + random short-query searches feed this —
+// feeds, charts and page-1 genre picks are excluded, so every card is
+// something home doesn't show. Reaches every working catalog, including
+// the non-WordPress sources (via search).
 async function renderDiscover() {
   updateRouteMeta('discover');
   view.innerHTML = `
     <div class="page-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Discover
-      <span class="sect-sub">50 random picks from every source</span>
+      <span class="sect-sub">50 deep cuts · never the home rows</span>
       <button class="btn primary" id="discoverShuffle" style="margin-left:auto;font-size:13px">Shuffle</button>
     </div>
     <div class="grid" id="discoverGrid">${spinner(8)}</div>
     <p class="small centered" id="discoverMeta" style="margin-top:14px"></p>`;
   const needFilter = !loadPrefs().mature;
+  // Mirrors the server SEARCH_PRIORITY (the verified working sources).
+  const DISCOVER_SOURCES = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans'];
+  const ADULT_TITLE = /\b(hentai|smut|ecchi|doujinshi|yaoi|yuri|bara|porn|sexy|erotic|adult)\b/i;
   const shuffle = (arr) => {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -3692,44 +3699,57 @@ async function renderDiscover() {
     grid.innerHTML = spinner(8);
     if (meta) meta.textContent = '';
     try {
+      // Exclude everything home shows: the module homeSeen set, plus fresh
+      // latest feeds and chart ids (covers direct visits with no home render).
+      const exclude = new Set([...homeSeen]);
+      try {
+        const [latestAll, charts] = await Promise.all([
+          fanout(MAJOR_SOURCES, (s) => `/api/comick/latest?source=${encodeURIComponent(s)}`).catch(() => []),
+          api('/api/charts').catch(() => null),
+        ]);
+        (latestAll || []).forEach((m) => m && m.id && exclude.add(m.id));
+        [...((charts && charts.trending) || []), ...((charts && charts.followed) || [])].forEach((e) => e && e.id && exclude.add(e.id));
+      } catch {}
       const pool = [];
       const seen = new Set();
       const take = (m) => {
-        if (!m || !m.id || seen.has(m.id)) return;
+        if (!m || !m.id || seen.has(m.id) || exclude.has(m.id)) return;
         seen.add(m.id);
         pool.push(m);
       };
-      const jobs = [];
-      // Latest updates from every major source (full card data, fast).
-      jobs.push(fanout(MAJOR_SOURCES, (s) => `/api/comick/latest?source=${encodeURIComponent(s)}${needFilter ? '&enrich=1' : ''}`).then((items) => (items || []).forEach(take)).catch(() => {}));
-      // Community charts (every source mixed, incl. non-WP ones) — resolved.
-      jobs.push((async () => {
-        try {
-          const charts = await api('/api/charts');
-          const ids = [...(charts.trending || []), ...(charts.followed || [])].map((e) => e && e.id).filter(Boolean);
-          const byId = await resolveComickIds(ids);
-          [...byId.values()].forEach(take);
-        } catch {}
-      })());
-      // One random genre for picks beyond the feeds.
-      jobs.push((async () => {
-        try {
-          const menu = (await comickGenres()).filter((g) => g.id && !['manga', 'manhwa', 'manhua'].includes(g.id) && (loadPrefs().mature || !isAdultSlug(g.id)));
-          if (!menu.length) return;
-          const slug = menu[Math.floor(Math.random() * menu.length)].id;
-          const items = await fanout(MAJOR_SOURCES, (s) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=1${needFilter ? '&enrich=1' : ''}`);
-          (items || []).forEach(take);
-        } catch {}
-      })());
-      await Promise.all(jobs);
-      const filtered = needFilter ? applyMatureFilter(pool) : pool;
-      const list = shuffle(filtered.filter((m) => m && m.id)).slice(0, 50);
+      const randLetters = () => String.fromCharCode(97 + Math.floor(Math.random() * 26)) + String.fromCharCode(97 + Math.floor(Math.random() * 26));
+      let rounds = 0;
+      while (pool.length < 50 && rounds < 6) {
+        rounds += 1;
+        const jobs = [];
+        // Deep genre page (past the front pages) on a random genre.
+        jobs.push((async () => {
+          try {
+            const menu = (await comickGenres()).filter((g) => g.id && !['manga', 'manhwa', 'manhua'].includes(g.id) && (loadPrefs().mature || !isAdultSlug(g.id)));
+            if (!menu.length) return;
+            const slug = menu[Math.floor(Math.random() * menu.length)].id;
+            const page = 2 + Math.floor(Math.random() * 24);
+            const items = await fanout(MAJOR_SOURCES, (s) => `/api/comick/genre?source=${encodeURIComponent(s)}&genre=${encodeURIComponent(slug)}&page=${page}${needFilter ? '&enrich=1' : ''}`);
+            (items || []).forEach(take);
+          } catch {}
+        })());
+        // Random short query across ALL working sources (reaches every catalog).
+        jobs.push((async () => {
+          try {
+            const { data } = await api(`/api/comick/search?q=${encodeURIComponent(randLetters())}&sources=${encodeURIComponent(DISCOVER_SOURCES.join(','))}`);
+            (data || []).filter((m) => !needFilter || !ADULT_TITLE.test(String((m && m.title) || ''))).forEach(take);
+          } catch {}
+        })());
+        await Promise.all(jobs);
+      }
+      let list = needFilter ? applyMatureFilter(pool) : pool;
+      list = shuffle(list.filter((m) => m && m.id)).slice(0, 50);
       if (!list.length) { grid.innerHTML = '<div class="centered">Nothing found — try Shuffle.</div>'; return; }
       grid.innerHTML = list.map((m) => mangaCard(m)).join('');
       wireCards(grid);
       if (meta) {
         const srcs = [...new Set(list.map((m) => m.source || 'source'))];
-        meta.textContent = `${list.length} picks across ${srcs.length} source${srcs.length === 1 ? '' : 's'} (${srcs.slice(0, 5).join(' · ')})`;
+        meta.textContent = `${list.length} deep cuts across ${srcs.length} source${srcs.length === 1 ? '' : 's'} (${srcs.slice(0, 6).join(' · ')}) · none from home`;
       }
     } catch (e) {
       grid.innerHTML = `<div class="centered">Could not load: ${esc(e.message)}</div>`;
