@@ -470,7 +470,7 @@ const applyTheme = () => {
 const MASCOT_SVGS = {
   'toon-mischief': `<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="23" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="23" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><ellipse cx="41" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="41" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><circle cx="32" cy="40" r="15" fill="#c9b3f2"/><circle cx="26" cy="38" r="4.4" fill="#fff"/><circle cx="38" cy="38" r="4.4" fill="#fff"/><g class="mpupil"><circle cx="26" cy="38.5" r="2.1" fill="#241a38"/><circle cx="38" cy="38.5" r="2.1" fill="#241a38"/></g><circle cx="21" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><circle cx="43" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><ellipse cx="32" cy="43" rx="2" ry="1.5" fill="#e2548b"/><g transform="rotate(18 52 52)"><path d="M47 47l10-3-7 9z" fill="#ff8c3b"/><path d="M55 42l1-4M57 43l3-3" stroke="#58c96b" stroke-width="1.8" stroke-linecap="round" fill="none"/></g></svg>`,
   'haunted-hollow': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 56V30a12 12 0 0 1 24 0v26l-4-4-4 4-4-4-4 4-4-4-4 4z" fill="#efeaff"/><g class="mpupil"><ellipse cx="26" cy="30" rx="2.6" ry="3.4" fill="#241a38"/><ellipse cx="38" cy="30" rx="2.6" ry="3.4" fill="#241a38"/></g><ellipse cx="32" cy="39" rx="2.6" ry="3.4" fill="#241a38"/><circle cx="22" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/><circle cx="42" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/></svg>`,
-  'skull-sanctum': `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="27" r="14" fill="#e9dfc8"/><rect x="23" y="34" width="18" height="12" rx="5" fill="#e9dfc8"/><ellipse cx="26" cy="28" rx="4" ry="5" fill="#241a38"/><ellipse cx="38" cy="28" rx="4" ry="5" fill="#241a38"/><g class="mpupil"><circle cx="26" cy="28" r="1.8" fill="#ffcf4d"/><circle cx="38" cy="28" r="1.8" fill="#ffcf4d"/></g><path d="M32 33l-2 4h4z" fill="#241a38"/><path d="M27 42v3M31 42v3M35 42v3M39 42v3" stroke="#8a7a5c" stroke-width="1.2"/></svg>`,
+  'skull-sanctum': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 5C21 5 12 14 12 26c0 6.5 2.8 11.4 6.8 14.6V47c0 2.2 1.8 4 4 4h18.4c2.2 0 4-1.8 4-4v-6.4c4-3.2 6.8-8.1 6.8-14.6 0-12-9-21-20-21z" fill="#262130" stroke="#57506b" stroke-width="1.6"/><path d="M40 10l-3.5 5.5 2.5 3-3.5 4.5" stroke="#57506b" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M19 25l7.5-2.5 1 7.5-6.5 3.5z" fill="#0a0812"/><path d="M45 25l-7.5-2.5-1 7.5 6.5 3.5z" fill="#0a0812"/><g class="mpupil"><circle cx="24" cy="27" r="3.4" fill="#ff5c2e" opacity=".28"/><circle cx="40" cy="27" r="3.4" fill="#ff5c2e" opacity=".28"/><circle cx="24" cy="27" r="1.9" fill="#ffb02e"/><circle cx="40" cy="27" r="1.9" fill="#ffb02e"/></g><path d="M32 33l-2.6 6h5.2z" fill="#0a0812"/><path d="M26 46v6M30.5 46v7M35.5 46v7M40 46v6" stroke="#57506b" stroke-width="1.3"/></svg>`,
 };
 function themeMascot() {
   const m = loadPrefs().mode;
@@ -707,7 +707,7 @@ function openSettings() {
   const prefs = loadPrefs();
   const s = prefs.sections;
   // Keep an owned shop theme selectable so saving settings never wipes it.
-  const themeOpts = [['dark', 'Dark'], ['light', 'Light'], ['toon-mischief', 'Toon Mischief'], ['haunted-hollow', 'Haunted Hollow'], ['skull-sanctum', 'Skull Sanctum']];
+  const themeOpts = [['dark', 'Dark'], ['light', 'Light']];
   if (prefs.mode && prefs.mode !== 'dark' && prefs.mode !== 'light') {
     themeOpts.push([prefs.mode, THEME_NAMES[prefs.mode] || prefs.mode]);
   }

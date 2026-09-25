@@ -179,10 +179,10 @@
   --red: #ff5c5c;
 }
 :root[data-theme="skull-sanctum"] {
-  --bg: #100c09;
-  --panel: #1a1410;
-  --panel2: #241b14;
-  --border: #453222;
+  --bg: #0b0705;
+  --panel: #14100b;
+  --panel2: #1d1610;
+  --border: #3a2b1c;
   --text: #f7efe2;
   --muted: #c2a87f;
   --accent: #ffae2e;
@@ -222,7 +222,7 @@ html[data-theme="skull-sanctum"] .manga-card:hover::after {
 @keyframes fxBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 html[data-theme="toon-mischief"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='23' cy='14' rx='6' ry='12' fill='%23c9b3f2'/%3E%3Cellipse cx='41' cy='14' rx='6' ry='12' fill='%23c9b3f2'/%3E%3Ccircle cx='32' cy='42' r='15' fill='%23c9b3f2'/%3E%3Ccircle cx='26' cy='40' r='4.5' fill='%23fff'/%3E%3Ccircle cx='38' cy='40' r='4.5' fill='%23fff'/%3E%3Ccircle cx='26' cy='41' r='2.2' fill='%23241a38'/%3E%3Ccircle cx='38' cy='41' r='2.2' fill='%23241a38'/%3E%3Cpath d='M48 50l10-2-7 8z' fill='%23ff8c3b'/%3E%3C/svg%3E"); }
 html[data-theme="haunted-hollow"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 58V30a12 12 0 0 1 24 0v28l-4-4-4 4-4-4-4 4-4-4-4 4z' fill='%23efeaff'/%3E%3Cellipse cx='26' cy='30' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3Cellipse cx='38' cy='30' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3Cellipse cx='32' cy='39' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3C/svg%3E"); }
-html[data-theme="skull-sanctum"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='27' r='14' fill='%23e9dfc8'/%3E%3Crect x='23' y='34' width='18' height='12' rx='5' fill='%23e9dfc8'/%3E%3Cellipse cx='26' cy='28' rx='4' ry='5' fill='%23241a38'/%3E%3Cellipse cx='38' cy='28' rx='4' ry='5' fill='%23241a38'/%3E%3Ccircle cx='26' cy='28' r='1.8' fill='%23ffcf4d'/%3E%3Ccircle cx='38' cy='28' r='1.8' fill='%23ffcf4d'/%3E%3C/svg%3E"); }
+html[data-theme="skull-sanctum"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 5C21 5 12 14 12 26c0 6.5 2.8 11.4 6.8 14.6V47c0 2.2 1.8 4 4 4h18.4c2.2 0 4-1.8 4-4v-6.4c4-3.2 6.8-8.1 6.8-14.6 0-12-9-21-20-21z' fill='%23262130' stroke='%2357506b' stroke-width='1.6'/%3E%3Cpath d='M19 25l7.5-2.5 1 7.5-6.5 3.5z' fill='%230a0812'/%3E%3Cpath d='M45 25l-7.5-2.5-1 7.5 6.5 3.5z' fill='%230a0812'/%3E%3Ccircle cx='24' cy='27' r='3.4' fill='%23ff5c2e' opacity='.28'/%3E%3Ccircle cx='40' cy='27' r='3.4' fill='%23ff5c2e' opacity='.28'/%3E%3Ccircle cx='24' cy='27' r='1.9' fill='%23ffb02e'/%3E%3Ccircle cx='40' cy='27' r='1.9' fill='%23ffb02e'/%3E%3C/svg%3E"); }
 /* Comment composer buddy. */
 .cbuddy { display: inline-flex; width: 44px; height: 44px; flex: 0 0 auto; align-self: center; animation: fxBob 3.2s ease-in-out infinite; }
 .cbuddy svg { width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .4)); }

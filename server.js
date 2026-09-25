@@ -537,6 +537,9 @@ const SHOP_CATALOG = [
   { id: 'theme-forest', slot: 'theme', name: 'Forest Night', price: 400, value: 'forest-night', desc: 'Deep-green app theme' },
   { id: 'theme-sunset', slot: 'theme', name: 'Ember Sunset', price: 500, value: 'sunset-ember', desc: 'Burnt-orange app theme' },
   { id: 'theme-royal', slot: 'theme', name: 'Royal Violet', price: 1000, value: 'royal-violet', desc: 'Regal purple app theme' },
+  { id: 'theme-toon', slot: 'theme', name: 'Toon Mischief', price: 1500, value: 'toon-mischief', desc: 'Animated cartoon night with a mischievous buddy' },
+  { id: 'theme-haunt', slot: 'theme', name: 'Haunted Hollow', price: 2500, value: 'haunted-hollow', desc: 'Eerie teal night with drifting ghosts' },
+  { id: 'theme-skull', slot: 'theme', name: 'Skull Sanctum', price: 4000, value: 'skull-sanctum', desc: 'Dark ember night with a watching skull' },
 ];
 const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
 function shopStateFor(userId) {
