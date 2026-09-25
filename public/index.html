@@ -29,12 +29,12 @@
     try {
       var _p = JSON.parse(localStorage.getItem('mgs_settings') || '{}');
       var _m = (_p && _p.mode) || 'dark';
-      document.documentElement.setAttribute('data-theme', (_m === 'light' || _m === 'dark' || _m === 'crimson-night' || _m === 'deep-ocean' || _m === 'forest-night' || _m === 'sunset-ember' || _m === 'royal-violet') ? _m : 'dark');
+      document.documentElement.setAttribute('data-theme', (_m === 'light' || _m === 'dark' || _m === 'crimson-night' || _m === 'deep-ocean' || _m === 'forest-night' || _m === 'sunset-ember' || _m === 'royal-violet' || _m === 'toon-mischief' || _m === 'haunted-hollow' || _m === 'skull-sanctum') ? _m : 'dark');
     } catch (e) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
   </script>
-  <link rel="stylesheet" href="/styles.css?v=64" />
+  <link rel="stylesheet" href="/styles.css?v=65" />
 </head>
 <body>
   <div id="discordBanner">Join our <a href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Discord</a> for support and discussions <a class="discord-banner-btn" href="https://discord.gg/7UcfZmYTX" target="_blank" rel="noopener">Join Discord</a></div>
@@ -87,6 +87,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=100"></script>
+  <script src="/app.js?v=101"></script>
 </body>
 </html>

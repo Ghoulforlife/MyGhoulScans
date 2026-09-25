@@ -71,6 +71,22 @@ function titleOf(data) {
   return (data && data.title) || 'Untitled';
 }
 
+// Genre menu ids look like "martial-arts" — slugify display names to match.
+function genreSlug(name) {
+  return String(name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'action';
+}
+function commentPlaceholder() {
+  const m = themeMascot();
+  if (m === 'toon-mischief') return "Ehh, what's new? Drop your take on this chapter…";
+  if (m === 'haunted-hollow') return 'Boo! Enjoying the chapter? The ghosts want to know…';
+  if (m === 'skull-sanctum') return 'Speak, mortal. What did you think of this chapter?';
+  return 'What did you think of this chapter? (sign in to post — enjoy the conversation if you did)';
+}
+function mascotBuddyHtml() {
+  const m = themeMascot();
+  return m ? `<span class="cbuddy" data-m="${m}" title="Your mascot is listening">${MASCOT_SVGS[m]}</span>` : '';
+}
+
 function coverUrl(data) {
   return (data && data.cover) || '';
 }
@@ -129,7 +145,7 @@ function nameColorHtml(name, color) {
   if (c.startsWith('linear-gradient(')) return `<span class="name-grad" style="background-image:${esc(c)}">${n}</span>`;
   return `<span style="color:${esc(c)}">${n}</span>`;
 }
-const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet' };
+const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet', 'toon-mischief': 'Toon Mischief', 'haunted-hollow': 'Haunted Hollow', 'skull-sanctum': 'Skull Sanctum' };
 
 function mangaCard(data, opts = {}) {
   const img = proxiedCover(data);
@@ -445,7 +461,49 @@ function savePrefs(p) {
 const applyTheme = () => {
   const m = loadPrefs().mode || 'dark';
   document.documentElement.dataset.theme = (m === 'light' || m === 'dark') ? m : (THEME_NAMES[m] ? m : 'dark');
+  paintThemeFx();
 };
+
+// ---------- mascot themes (original critters — toon rabbit, ghost, skull) ----------
+// Inline SVG buddies: background drifters, card-hover peekers (CSS) and the
+// comment composer buddy. Pupils (.mpupil) track the cursor a few pixels.
+const MASCOT_SVGS = {
+  'toon-mischief': `<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="23" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="23" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><ellipse cx="41" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="41" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><circle cx="32" cy="40" r="15" fill="#c9b3f2"/><circle cx="26" cy="38" r="4.4" fill="#fff"/><circle cx="38" cy="38" r="4.4" fill="#fff"/><g class="mpupil"><circle cx="26" cy="38.5" r="2.1" fill="#241a38"/><circle cx="38" cy="38.5" r="2.1" fill="#241a38"/></g><circle cx="21" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><circle cx="43" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><ellipse cx="32" cy="43" rx="2" ry="1.5" fill="#e2548b"/><g transform="rotate(18 52 52)"><path d="M47 47l10-3-7 9z" fill="#ff8c3b"/><path d="M55 42l1-4M57 43l3-3" stroke="#58c96b" stroke-width="1.8" stroke-linecap="round" fill="none"/></g></svg>`,
+  'haunted-hollow': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 56V30a12 12 0 0 1 24 0v26l-4-4-4 4-4-4-4 4-4-4-4 4z" fill="#efeaff"/><g class="mpupil"><ellipse cx="26" cy="30" rx="2.6" ry="3.4" fill="#241a38"/><ellipse cx="38" cy="30" rx="2.6" ry="3.4" fill="#241a38"/></g><ellipse cx="32" cy="39" rx="2.6" ry="3.4" fill="#241a38"/><circle cx="22" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/><circle cx="42" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/></svg>`,
+  'skull-sanctum': `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="27" r="14" fill="#e9dfc8"/><rect x="23" y="34" width="18" height="12" rx="5" fill="#e9dfc8"/><ellipse cx="26" cy="28" rx="4" ry="5" fill="#241a38"/><ellipse cx="38" cy="28" rx="4" ry="5" fill="#241a38"/><g class="mpupil"><circle cx="26" cy="28" r="1.8" fill="#ffcf4d"/><circle cx="38" cy="28" r="1.8" fill="#ffcf4d"/></g><path d="M32 33l-2 4h4z" fill="#241a38"/><path d="M27 42v3M31 42v3M35 42v3M39 42v3" stroke="#8a7a5c" stroke-width="1.2"/></svg>`,
+};
+function themeMascot() {
+  const m = loadPrefs().mode;
+  return MASCOT_SVGS[m] ? m : '';
+}
+function paintThemeFx() {
+  const m = themeMascot();
+  let fx = document.getElementById('themeFx');
+  if (!m) { fx?.remove(); return; }
+  if (!fx) {
+    fx = document.createElement('div');
+    fx.id = 'themeFx';
+    fx.setAttribute('aria-hidden', 'true');
+    document.body.prepend(fx);
+  }
+  fx.dataset.mascot = m;
+  const svg = MASCOT_SVGS[m];
+  fx.innerHTML = `<span class="fx-d f1">${svg}</span><span class="fx-d f2">${svg}</span><span class="fx-d f3">${svg}</span>`;
+}
+// Mascot pupils follow the cursor a few pixels (they look at the reader).
+(() => {
+  let raf = 0, tx = 0, ty = 0;
+  const root = document.documentElement;
+  window.addEventListener('mousemove', (e) => {
+    tx = (e.clientX / window.innerWidth - 0.5) * 10;
+    ty = (e.clientY / window.innerHeight - 0.5) * 8;
+    if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0;
+      root.style.setProperty('--mx', tx.toFixed(1) + 'px');
+      root.style.setProperty('--my', ty.toFixed(1) + 'px');
+    });
+  }, { passive: true });
+})();
 
 // ---------- local progress (LEGACY guest key — kept only to delete it) ----------
 // Continue Reading is sign-in-only and server-backed. Guests are never
@@ -649,7 +707,7 @@ function openSettings() {
   const prefs = loadPrefs();
   const s = prefs.sections;
   // Keep an owned shop theme selectable so saving settings never wipes it.
-  const themeOpts = [['dark', 'Dark'], ['light', 'Light']];
+  const themeOpts = [['dark', 'Dark'], ['light', 'Light'], ['toon-mischief', 'Toon Mischief'], ['haunted-hollow', 'Haunted Hollow'], ['skull-sanctum', 'Skull Sanctum']];
   if (prefs.mode && prefs.mode !== 'dark' && prefs.mode !== 'light') {
     themeOpts.push([prefs.mode, THEME_NAMES[prefs.mode] || prefs.mode]);
   }
@@ -1629,7 +1687,7 @@ async function renderTitle(mangaId) {
             ${chapters.length ? `<span class="chip">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>` : ''}
           </div>
           ${manga.description ? `<div class="summary">${esc(cleanDesc(manga.description))}</div>` : ''}
-          ${tags.length ? `<div class="chips">${tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${tags.length ? `<div class="chips">${tags.map((t) => `<a class="chip" href="#/genre/${encodeURIComponent(genreSlug(t))}" title="More ${esc(t)} comics">${esc(t)}</a>`).join('')}</div>` : ''}
           <div class="title-actions">
             ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || '?')} &#183; p.${progress.page + 1}</button>` : ''}
             ${!progress && chapters.length ? `<button class="btn primary" id="startBtn">Read Chapter ${esc(firstChapterLabel(chapters))}</button>` : ''}
@@ -2609,7 +2667,8 @@ async function renderComments(container, mangaId, chapterId) {
 
   const form = canPost
     ? `<div class="comment-form">
-        <textarea id="commentBody" maxlength="2000" placeholder="What did you think of this chapter? (sign in to post — enjoy the conversation if you did)"></textarea>
+        ${mascotBuddyHtml()}
+        <textarea id="commentBody" maxlength="2000" placeholder="${esc(commentPlaceholder())}"></textarea>
         <button class="btn primary" id="commentPost">Post</button>
       </div>`
     : `<div class="comment-login">Sign in to leave a comment under this chapter. <button class="btn primary" id="commentLogin">Log in / Sign up</button></div>`;

@@ -29,7 +29,7 @@
     try {
       var _p = JSON.parse(localStorage.getItem('mgs_settings') || '{}');
       var _m = (_p && _p.mode) || 'dark';
-      document.documentElement.setAttribute('data-theme', (_m === 'light' || _m === 'dark' || _m === 'crimson-night' || _m === 'deep-ocean' || _m === 'forest-night' || _m === 'sunset-ember' || _m === 'royal-violet') ? _m : 'dark');
+      document.documentElement.setAttribute('data-theme', (_m === 'light' || _m === 'dark' || _m === 'crimson-night' || _m === 'deep-ocean' || _m === 'forest-night' || _m === 'sunset-ember' || _m === 'royal-violet' || _m === 'toon-mischief' || _m === 'haunted-hollow' || _m === 'skull-sanctum') ? _m : 'dark');
     } catch (e) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
@@ -175,6 +175,94 @@
   --yellow: #f1c40f;
   --red: #ff5c5c;
 }
+:root[data-theme="toon-mischief"] {
+  --bg: #151022;
+  --panel: #1e1633;
+  --panel2: #281c44;
+  --border: #46336f;
+  --text: #f3ecff;
+  --muted: #b9a3e3;
+  --accent: #c26bff;
+  --accent2: #8b3fd9;
+  --accentHi: #dda8ff;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  --cardGlow: rgba(194, 107, 255, .16);
+  --topbarBg: rgba(21, 16, 34, .9);
+  --glow1: rgba(194, 107, 255, .07);
+  --glow2: rgba(242, 167, 216, .05);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #f1c40f;
+  --red: #ff5c5c;
+}
+:root[data-theme="haunted-hollow"] {
+  --bg: #071310;
+  --panel: #0c1f1a;
+  --panel2: #122b23;
+  --border: #1f4d3d;
+  --text: #e9f7f0;
+  --muted: #8fc0ab;
+  --accent: #43e0a0;
+  --accent2: #1da873;
+  --accentHi: #7dffc4;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  --cardGlow: rgba(67, 224, 160, .14);
+  --topbarBg: rgba(7, 19, 16, .9);
+  --glow1: rgba(67, 224, 160, .06);
+  --glow2: rgba(125, 255, 196, .04);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #f1c40f;
+  --red: #ff5c5c;
+}
+:root[data-theme="skull-sanctum"] {
+  --bg: #100c09;
+  --panel: #1a1410;
+  --panel2: #241b14;
+  --border: #453222;
+  --text: #f7efe2;
+  --muted: #c2a87f;
+  --accent: #ffae2e;
+  --accent2: #c97a12;
+  --accentHi: #ffd07a;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  --cardGlow: rgba(255, 174, 46, .14);
+  --topbarBg: rgba(16, 12, 9, .9);
+  --glow1: rgba(255, 174, 46, .06);
+  --glow2: rgba(255, 92, 92, .05);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #f1c40f;
+  --red: #ff5c5c;
+}
+
+/* ---------- mascot themes: background drifters ---------- */
+#themeFx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#view { position: relative; z-index: 1; }
+.fx-d { position: absolute; opacity: .5; animation: fxDrift 9s ease-in-out infinite; }
+.fx-d svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .45)); }
+.fx-d.f1 { width: 76px; left: 5%; top: 16%; }
+.fx-d.f2 { width: 54px; right: 6%; top: 58%; animation-duration: 7s; animation-delay: -3s; }
+.fx-d.f3 { width: 38px; left: 44%; top: 82%; animation-duration: 11s; animation-delay: -5s; opacity: .38; }
+@keyframes fxDrift { 0%, 100% { transform: translate(0, 0) rotate(-4deg); } 50% { transform: translate(30px, -34px) rotate(4deg); } }
+/* Mascot pupils track the cursor (set by JS as --mx/--my). */
+.mpupil { transform: translate(var(--mx, 0px), var(--my, 0px)); }
+/* Card hover buddy: mascot peeks up over the cover. */
+html[data-theme="toon-mischief"] .manga-card:hover::after,
+html[data-theme="haunted-hollow"] .manga-card:hover::after,
+html[data-theme="skull-sanctum"] .manga-card:hover::after {
+  content: ""; position: absolute; right: -8px; bottom: -4px; width: 58px; height: 58px;
+  z-index: 3; pointer-events: none; background-size: contain; background-repeat: no-repeat;
+  animation: buddyPop .45s cubic-bezier(.2, 1.6, .4, 1) both, fxBob 2.6s ease-in-out .45s infinite;
+}
+@keyframes buddyPop { from { transform: translateY(26px) scale(.4); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@keyframes fxBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+html[data-theme="toon-mischief"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cellipse cx='23' cy='14' rx='6' ry='12' fill='%23c9b3f2'/%3E%3Cellipse cx='41' cy='14' rx='6' ry='12' fill='%23c9b3f2'/%3E%3Ccircle cx='32' cy='42' r='15' fill='%23c9b3f2'/%3E%3Ccircle cx='26' cy='40' r='4.5' fill='%23fff'/%3E%3Ccircle cx='38' cy='40' r='4.5' fill='%23fff'/%3E%3Ccircle cx='26' cy='41' r='2.2' fill='%23241a38'/%3E%3Ccircle cx='38' cy='41' r='2.2' fill='%23241a38'/%3E%3Cpath d='M48 50l10-2-7 8z' fill='%23ff8c3b'/%3E%3C/svg%3E"); }
+html[data-theme="haunted-hollow"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 58V30a12 12 0 0 1 24 0v28l-4-4-4 4-4-4-4 4-4-4-4 4z' fill='%23efeaff'/%3E%3Cellipse cx='26' cy='30' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3Cellipse cx='38' cy='30' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3Cellipse cx='32' cy='39' rx='2.6' ry='3.4' fill='%23241a38'/%3E%3C/svg%3E"); }
+html[data-theme="skull-sanctum"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='27' r='14' fill='%23e9dfc8'/%3E%3Crect x='23' y='34' width='18' height='12' rx='5' fill='%23e9dfc8'/%3E%3Cellipse cx='26' cy='28' rx='4' ry='5' fill='%23241a38'/%3E%3Cellipse cx='38' cy='28' rx='4' ry='5' fill='%23241a38'/%3E%3Ccircle cx='26' cy='28' r='1.8' fill='%23ffcf4d'/%3E%3Ccircle cx='38' cy='28' r='1.8' fill='%23ffcf4d'/%3E%3C/svg%3E"); }
+/* Comment composer buddy. */
+.cbuddy { display: inline-flex; width: 44px; height: 44px; flex: 0 0 auto; align-self: center; animation: fxBob 3.2s ease-in-out infinite; }
+.cbuddy svg { width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .4)); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -386,6 +474,8 @@ a { color: inherit; text-decoration: none; }
 .title-info .summary { color: var(--text); line-height: 1.6; margin: 12px 0; font-size: 14.5px; max-height: 180px; overflow: auto; }
 .title-info .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .title-info .chip { font-size: 12px; background: var(--panel2); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; color: var(--muted); }
+.title-info a.chip { text-decoration: none; cursor: pointer; transition: border-color .12s, color .12s; }
+.title-info a.chip:hover { border-color: var(--accent); color: var(--accentHi); }
 .title-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
 
 .chapter-list { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
@@ -1436,6 +1526,22 @@ function titleOf(data) {
   return (data && data.title) || 'Untitled';
 }
 
+// Genre menu ids look like "martial-arts" — slugify display names to match.
+function genreSlug(name) {
+  return String(name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'action';
+}
+function commentPlaceholder() {
+  const m = themeMascot();
+  if (m === 'toon-mischief') return "Ehh, what's new? Drop your take on this chapter…";
+  if (m === 'haunted-hollow') return 'Boo! Enjoying the chapter? The ghosts want to know…';
+  if (m === 'skull-sanctum') return 'Speak, mortal. What did you think of this chapter?';
+  return 'What did you think of this chapter? (sign in to post — enjoy the conversation if you did)';
+}
+function mascotBuddyHtml() {
+  const m = themeMascot();
+  return m ? `<span class="cbuddy" data-m="${m}" title="Your mascot is listening">${MASCOT_SVGS[m]}</span>` : '';
+}
+
 function coverUrl(data) {
   return (data && data.cover) || '';
 }
@@ -1494,7 +1600,7 @@ function nameColorHtml(name, color) {
   if (c.startsWith('linear-gradient(')) return `<span class="name-grad" style="background-image:${esc(c)}">${n}</span>`;
   return `<span style="color:${esc(c)}">${n}</span>`;
 }
-const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet' };
+const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet', 'toon-mischief': 'Toon Mischief', 'haunted-hollow': 'Haunted Hollow', 'skull-sanctum': 'Skull Sanctum' };
 
 function mangaCard(data, opts = {}) {
   const img = proxiedCover(data);
@@ -1811,7 +1917,49 @@ function savePrefs(p) {
 const applyTheme = () => {
   const m = loadPrefs().mode || 'dark';
   document.documentElement.dataset.theme = (m === 'light' || m === 'dark') ? m : (THEME_NAMES[m] ? m : 'dark');
+  paintThemeFx();
 };
+
+// ---------- mascot themes (original critters — toon rabbit, ghost, skull) ----------
+// Inline SVG buddies: background drifters, card-hover peekers (CSS) and the
+// comment composer buddy. Pupils (.mpupil) track the cursor a few pixels.
+const MASCOT_SVGS = {
+  'toon-mischief': `<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="23" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="23" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><ellipse cx="41" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="41" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><circle cx="32" cy="40" r="15" fill="#c9b3f2"/><circle cx="26" cy="38" r="4.4" fill="#fff"/><circle cx="38" cy="38" r="4.4" fill="#fff"/><g class="mpupil"><circle cx="26" cy="38.5" r="2.1" fill="#241a38"/><circle cx="38" cy="38.5" r="2.1" fill="#241a38"/></g><circle cx="21" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><circle cx="43" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><ellipse cx="32" cy="43" rx="2" ry="1.5" fill="#e2548b"/><g transform="rotate(18 52 52)"><path d="M47 47l10-3-7 9z" fill="#ff8c3b"/><path d="M55 42l1-4M57 43l3-3" stroke="#58c96b" stroke-width="1.8" stroke-linecap="round" fill="none"/></g></svg>`,
+  'haunted-hollow': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 56V30a12 12 0 0 1 24 0v26l-4-4-4 4-4-4-4 4-4-4-4 4z" fill="#efeaff"/><g class="mpupil"><ellipse cx="26" cy="30" rx="2.6" ry="3.4" fill="#241a38"/><ellipse cx="38" cy="30" rx="2.6" ry="3.4" fill="#241a38"/></g><ellipse cx="32" cy="39" rx="2.6" ry="3.4" fill="#241a38"/><circle cx="22" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/><circle cx="42" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/></svg>`,
+  'skull-sanctum': `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="27" r="14" fill="#e9dfc8"/><rect x="23" y="34" width="18" height="12" rx="5" fill="#e9dfc8"/><ellipse cx="26" cy="28" rx="4" ry="5" fill="#241a38"/><ellipse cx="38" cy="28" rx="4" ry="5" fill="#241a38"/><g class="mpupil"><circle cx="26" cy="28" r="1.8" fill="#ffcf4d"/><circle cx="38" cy="28" r="1.8" fill="#ffcf4d"/></g><path d="M32 33l-2 4h4z" fill="#241a38"/><path d="M27 42v3M31 42v3M35 42v3M39 42v3" stroke="#8a7a5c" stroke-width="1.2"/></svg>`,
+};
+function themeMascot() {
+  const m = loadPrefs().mode;
+  return MASCOT_SVGS[m] ? m : '';
+}
+function paintThemeFx() {
+  const m = themeMascot();
+  let fx = document.getElementById('themeFx');
+  if (!m) { fx?.remove(); return; }
+  if (!fx) {
+    fx = document.createElement('div');
+    fx.id = 'themeFx';
+    fx.setAttribute('aria-hidden', 'true');
+    document.body.prepend(fx);
+  }
+  fx.dataset.mascot = m;
+  const svg = MASCOT_SVGS[m];
+  fx.innerHTML = `<span class="fx-d f1">${svg}</span><span class="fx-d f2">${svg}</span><span class="fx-d f3">${svg}</span>`;
+}
+// Mascot pupils follow the cursor a few pixels (they look at the reader).
+(() => {
+  let raf = 0, tx = 0, ty = 0;
+  const root = document.documentElement;
+  window.addEventListener('mousemove', (e) => {
+    tx = (e.clientX / window.innerWidth - 0.5) * 10;
+    ty = (e.clientY / window.innerHeight - 0.5) * 8;
+    if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0;
+      root.style.setProperty('--mx', tx.toFixed(1) + 'px');
+      root.style.setProperty('--my', ty.toFixed(1) + 'px');
+    });
+  }, { passive: true });
+})();
 
 // ---------- local progress (LEGACY guest key — kept only to delete it) ----------
 // Continue Reading is sign-in-only and server-backed. Guests are never
@@ -2015,7 +2163,7 @@ function openSettings() {
   const prefs = loadPrefs();
   const s = prefs.sections;
   // Keep an owned shop theme selectable so saving settings never wipes it.
-  const themeOpts = [['dark', 'Dark'], ['light', 'Light']];
+  const themeOpts = [['dark', 'Dark'], ['light', 'Light'], ['toon-mischief', 'Toon Mischief'], ['haunted-hollow', 'Haunted Hollow'], ['skull-sanctum', 'Skull Sanctum']];
   if (prefs.mode && prefs.mode !== 'dark' && prefs.mode !== 'light') {
     themeOpts.push([prefs.mode, THEME_NAMES[prefs.mode] || prefs.mode]);
   }
@@ -2995,7 +3143,7 @@ async function renderTitle(mangaId) {
             ${chapters.length ? `<span class="chip">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>` : ''}
           </div>
           ${manga.description ? `<div class="summary">${esc(cleanDesc(manga.description))}</div>` : ''}
-          ${tags.length ? `<div class="chips">${tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${tags.length ? `<div class="chips">${tags.map((t) => `<a class="chip" href="#/genre/${encodeURIComponent(genreSlug(t))}" title="More ${esc(t)} comics">${esc(t)}</a>`).join('')}</div>` : ''}
           <div class="title-actions">
             ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || '?')} &#183; p.${progress.page + 1}</button>` : ''}
             ${!progress && chapters.length ? `<button class="btn primary" id="startBtn">Read Chapter ${esc(firstChapterLabel(chapters))}</button>` : ''}
@@ -3975,7 +4123,8 @@ async function renderComments(container, mangaId, chapterId) {
 
   const form = canPost
     ? `<div class="comment-form">
-        <textarea id="commentBody" maxlength="2000" placeholder="What did you think of this chapter? (sign in to post — enjoy the conversation if you did)"></textarea>
+        ${mascotBuddyHtml()}
+        <textarea id="commentBody" maxlength="2000" placeholder="${esc(commentPlaceholder())}"></textarea>
         <button class="btn primary" id="commentPost">Post</button>
       </div>`
     : `<div class="comment-login">Sign in to leave a comment under this chapter. <button class="btn primary" id="commentLogin">Log in / Sign up</button></div>`;
