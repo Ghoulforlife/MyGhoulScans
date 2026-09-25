@@ -163,6 +163,7 @@ function decodeEntities(s) {
       const c = parseInt(h, 16);
       return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : _;
     })
+    .replace(/&nbsp;/gi, ' ')
     .trim();
 }
 function absUrl(maybeRel, base) {
@@ -207,8 +208,10 @@ function cleanImgList(urls) {
 function metaContent(html, prop) {
   const tag = html.match(new RegExp('<meta[^>]*property=["\']' + prop + '["\'][^>]*>', 'i'));
   if (!tag) return '';
-  const c = tag[0].match(/content=["']([^"']{1,500})["']/i);
-  return c ? decodeEntities(c[1]) : '';
+  // Backreference pairs the quotes, so long content with apostrophes (or
+  // over the old 500-char cap) parses whole instead of cut off.
+  const c = tag[0].match(/content=(["'])([\s\S]{1,5000}?)\1/i);
+  return c ? decodeEntities(c[2]) : '';
 }
 
 // Source synopses ship with credit boilerplate + raw URLs
@@ -256,9 +259,12 @@ async function scrapeTitle(source, url) {
         if (name.length > 1 && !seen.has(name.toLowerCase())) { seen.add(name.toLowerCase()); genres.push(name); }
       }
     }
-    if (!description) {
+    // The og:description teaser is often cut mid-sentence — prefer the
+    // full in-page summary whenever it carries more text.
+    {
       const d = html.match(/summary__content[^>]*>([\s\S]{1,3000}?)<\/div>/i);
-      if (d) description = decodeEntities(d[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 1500);
+      const summary = d ? decodeEntities(d[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 1500) : '';
+      if (summary.length > description.length) description = summary;
     }
   }
   return { title: title || 'Untitled', cover, description: cleanSynopsis(description), status, type, genres };
