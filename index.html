@@ -573,6 +573,13 @@ a { color: inherit; text-decoration: none; }
 .rprog i { display: block; height: 100%; width: 0; background: var(--accent); }
 #readerPages { scroll-margin-top: 150px; }
 .reader-pages.no-margin { gap: 0; }
+/* True gapless: gap alone still leaves rounded corners + shadows drawing
+   seams between stacked pages — strip those too so pages fuse edge to edge. */
+.reader-pages.no-margin img.page-img {
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+}
 .reader-pages.paged img.page-img { display: none; aspect-ratio: auto; max-height: calc(100dvh - 230px); width: auto; max-width: 100%; margin: 0 auto; object-fit: contain; }
 .reader-pages.paged img.page-img.cur { display: block; }
 .reader-pages.paged .reader-end { display: none; }
