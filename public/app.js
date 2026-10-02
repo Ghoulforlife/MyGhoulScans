@@ -878,14 +878,31 @@ async function fillGrid(gridId, url) {
   }
 }
 
+let lastTapNav = 0;
 function wireCards(container) {
   if (!container) return;
   container.querySelectorAll('.manga-card').forEach((el) => {
     if (el.dataset.wired) return;
     el.dataset.wired = '1';
+    const go = () => { location.hash = titleHash(el.dataset.id); };
+    // Mobile taps inside horizontal rows are sometimes eaten (scroll/snap
+    // takes over so the click never fires — the card just flashes). A clean
+    // touchend (finger barely moved) navigates directly; the click guard
+    // below prevents double navigation when both fire.
+    el.addEventListener('touchstart', (e) => {
+      const t = e.changedTouches[0];
+      el._tx = t.clientX; el._ty = t.clientY;
+    }, { passive: true });
+    el.addEventListener('touchend', (e) => {
+      if (e.target.closest('.bmark')) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - (el._tx ?? t.clientX), dy = t.clientY - (el._ty ?? t.clientY);
+      if (Math.hypot(dx, dy) < 14) { lastTapNav = Date.now(); go(); }
+    }, { passive: true });
     el.addEventListener('click', (e) => {
       if (e.target.closest('.bmark')) return;
-      location.hash = titleHash(el.dataset.id);
+      if (Date.now() - lastTapNav < 1000) return;
+      go();
     });
   });
   container.querySelectorAll('.bmark').forEach((b) => {
