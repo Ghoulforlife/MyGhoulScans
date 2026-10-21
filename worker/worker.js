@@ -805,6 +805,9 @@ const SHOP_CATALOG = [
   { id: 'theme-toon', slot: 'theme', name: 'Toon Mischief', price: 250, value: 'toon-mischief', desc: 'Animated cartoon night with a mischievous buddy' },
   { id: 'theme-haunt', slot: 'theme', name: 'Haunted Hollow', price: 400, value: 'haunted-hollow', desc: 'Spectral violet night with drifting ghosts' },
   { id: 'theme-skull', slot: 'theme', name: 'Skull Sanctum', price: 600, value: 'skull-sanctum', desc: 'Blood-on-black night with a watching skull' },
+  { id: 'theme-pixel', slot: 'theme', name: 'Pixel Sunset', price: 500, value: 'pixel-sunset', desc: 'Synthwave pixel sunset night' },
+  { id: 'theme-witcher', slot: 'theme', name: 'Witcher Sunset', price: 550, value: 'witcher-sunset', desc: 'Golden hour fantasy night' },
+  { id: 'theme-gears', slot: 'theme', name: 'Gears Skull', price: 650, value: 'gears-skull', desc: 'Blood-and-steel dark emblem night' },
 ];
 const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
 async function authUser(req, env) {

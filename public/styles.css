@@ -198,6 +198,66 @@
   --yellow: #f1c40f;
   --red: #ff5c5c;
 }
+:root[data-theme="pixel-sunset"] {
+  --bg: #0a0514;
+  --panel: #140c1a;
+  --panel2: #1d1426;
+  --border: #5a1a5a;
+  --text: #ffd6ff;
+  --muted: #c08ff0;
+  --accent: #ff4dff;
+  --accent2: #d93ad9;
+  --accentHi: #ff8cff;
+  --shadow: 0 10px 30px rgba(255, 77, 255, .4);
+  --cardGlow: rgba(255, 77, 255, .18);
+  --topbarBg: rgba(10, 5, 20, .92);
+  --glow1: rgba(255, 77, 255, .08);
+  --glow2: rgba(255, 120, 120, .06);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #ffcc4d;
+  --red: #ff4dff;
+}
+:root[data-theme="witcher-sunset"] {
+  --bg: #0f1214;
+  --panel: #1c1918;
+  --panel2: #25201d;
+  --border: #4a4038;
+  --text: #f0e6d8;
+  --muted: #b8a898;
+  --accent: #d4a373;
+  --accent2: #bc8c54;
+  --accentHi: #e8c59c;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  --cardGlow: rgba(212, 163, 115, .16);
+  --topbarBg: rgba(15, 18, 20, .94);
+  --glow1: rgba(212, 163, 115, .07);
+  --glow2: rgba(180, 120, 80, .05);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #e8c59c;
+  --red: #a34242;
+}
+:root[data-theme="gears-skull"] {
+  --bg: #080404;
+  --panel: #140808;
+  --panel2: #1e0c0c;
+  --border: #4a1616;
+  --text: #f4e8e8;
+  --muted: #c09a9a;
+  --accent: #e83c3c;
+  --accent2: #b82828;
+  --accentHi: #ff6b6b;
+  --shadow: 0 10px 30px rgba(120, 0, 0, .5);
+  --cardGlow: rgba(232, 60, 60, .18);
+  --topbarBg: rgba(8, 4, 4, .96);
+  --glow1: rgba(232, 60, 60, .07);
+  --glow2: rgba(255, 100, 100, .06);
+  --green: #2ecc71;
+  --blue: #66b8ff;
+  --yellow: #f1c40f;
+  --red: #e83c3c;
+}
 
 /* ---------- mascot themes: background drifters ---------- */
 #themeFx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
@@ -1388,3 +1448,13 @@ input:checked + .switch::after { transform: translateX(18px); background: #fff; 
 }
 .comix-inapp .btn { white-space: nowrap; }
 #altSrcRow { display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Pixel car hover buddy */
+html[data-theme="pixel-sunset"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='26' w='30' h='16' fill='%23ff4dff'/%3E%3Crect x='12' y='20' w='26' h='8' fill='%23d93ad9'/%3E%3Ccircle cx='14' cy='44' r='4' fill='%230a0514'/%3E%3Ccircle cx='36' cy='44' r='4' fill='%230a0514'/%3E%3Ccircle cx='14' cy='44' r='1.2' fill='%23ffd6ff'/%3E%3Ccircle cx='36' cy='44' r='1.2' fill='%23ffd6ff'/%3E%3Crect x='20' y='16' w='10' h='6' fill='%23ffd6ff'/%3E%3C/svg%3E"); }
+/* Witcher medallion hover buddy */
+html[data-theme="witcher-sunset"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 18c0-6 6-10 12-10s12 4 12 10v8l-4-4-4 4-4-4-4 4z' fill='%23d4a373'/%3E%3Ccircle cx='26' cy='20' r='3' fill='%23f0e6d8'/%3E%3Ccircle cx='38' cy='20' r='3' fill='%23f0e6d8'/%3E%3Cpath d='M26 26c0 4-4 8-8 8s-8-4-8-8z' fill='%230f1214'/%3E%3Cpath d='M38 26c0 4-4 8-8 8s-8-4-8-8z' fill='%230f1214'/%3E%3C/svg%3E"); }
+/* Gears skull hover buddy */
+html[data-theme="gears-skull"] .manga-card:hover::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 6C23 6 14 11 14 20c0 6 3 11 7 14V56c0 2 2 4 4 4h14c2 0 4-2 4-4V34c4-3 7-8 7-14 0-9-9-14-14-14z' fill='%23140808' stroke='%234a1616' stroke-width='1.6'/%3E%3Cpath d='M26 20c0-3 3-6 6-6s6 3 6 6z' fill='%23080404'/%3E%3Cpath d='M38 20c0-3 3-6 6-6s6 3 6 6z' fill='%23080404'/%3E%3Ccircle cx='26' cy='21' r='2.2' fill='%23ff6b6b'/%3E%3Ccircle cx='38' cy='21' r='2.2' fill='%23ff6b6b'/%3E%3Cpath d='M32 33l-2.6 6h5.2z' fill='%23080404'/%3E%3C/svg%3E"); }
+/* Shop mascot preview cards for new themes. */
+.shop-theme-art[data-shop-theme="pixel-sunset"] { background: #140c1a; border-color: #d93ad9; }
+.shop-theme-art[data-shop-theme="witcher-sunset"] { background: #1c1918; border-color: #bc8c54; }
+.shop-theme-art[data-shop-theme="gears-skull"] { background: #140808; border-color: #b82828; }

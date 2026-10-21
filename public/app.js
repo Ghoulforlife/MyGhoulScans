@@ -80,6 +80,9 @@ function commentPlaceholder() {
   if (m === 'toon-mischief') return "Ehh, what's new? Drop your take on this chapter…";
   if (m === 'haunted-hollow') return 'Boo! Enjoying the chapter? The ghosts want to know…';
   if (m === 'skull-sanctum') return 'Speak, mortal. What did you think of this chapter?';
+  if (m === 'pixel-sunset') return 'Pixel sunset vibes — drop your thoughts below…';
+  if (m === 'witcher-sunset') return "The witcher's gaze is upon your review…";
+  if (m === 'gears-skull') return 'Speak, soldier. What did you think of this chapter?';
   return 'What did you think of this chapter? (sign in to post — enjoy the conversation if you did)';
 }
 function mascotBuddyHtml() {
@@ -145,7 +148,7 @@ function nameColorHtml(name, color) {
   if (c.startsWith('linear-gradient(')) return `<span class="name-grad" style="background-image:${esc(c)}">${n}</span>`;
   return `<span style="color:${esc(c)}">${n}</span>`;
 }
-const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet', 'toon-mischief': 'Toon Mischief', 'haunted-hollow': 'Haunted Hollow', 'skull-sanctum': 'Skull Sanctum' };
+const THEME_NAMES = { 'crimson-night': 'Crimson Night', 'deep-ocean': 'Deep Ocean', 'forest-night': 'Forest Night', 'sunset-ember': 'Ember Sunset', 'royal-violet': 'Royal Violet', 'toon-mischief': 'Toon Mischief', 'haunted-hollow': 'Haunted Hollow', 'skull-sanctum': 'Skull Sanctum', 'pixel-sunset': 'Pixel Sunset', 'witcher-sunset': 'Witcher Sunset', 'gears-skull': 'Gears Skull' };
 
 function mangaCard(data, opts = {}) {
   const img = proxiedCover(data);
@@ -471,6 +474,9 @@ const MASCOT_SVGS = {
   'toon-mischief': `<svg viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="23" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="23" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><ellipse cx="41" cy="13" rx="5.5" ry="12" fill="#c9b3f2"/><ellipse cx="41" cy="14" rx="2.6" ry="8" fill="#f2a7d8"/><circle cx="32" cy="40" r="15" fill="#c9b3f2"/><circle cx="26" cy="38" r="4.4" fill="#fff"/><circle cx="38" cy="38" r="4.4" fill="#fff"/><g class="mpupil"><circle cx="26" cy="38.5" r="2.1" fill="#241a38"/><circle cx="38" cy="38.5" r="2.1" fill="#241a38"/></g><circle cx="21" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><circle cx="43" cy="44" r="2.4" fill="#f2a7d8" opacity=".8"/><ellipse cx="32" cy="43" rx="2" ry="1.5" fill="#e2548b"/><g transform="rotate(18 52 52)"><path d="M47 47l10-3-7 9z" fill="#ff8c3b"/><path d="M55 42l1-4M57 43l3-3" stroke="#58c96b" stroke-width="1.8" stroke-linecap="round" fill="none"/></g></svg>`,
   'haunted-hollow': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 56V30a12 12 0 0 1 24 0v26l-4-4-4 4-4-4-4 4-4-4-4 4z" fill="#e3dfff"/><g class="mpupil"><ellipse cx="26" cy="30" rx="2.6" ry="3.4" fill="#241a38"/><ellipse cx="38" cy="30" rx="2.6" ry="3.4" fill="#241a38"/></g><ellipse cx="32" cy="39" rx="2.6" ry="3.4" fill="#241a38"/><circle cx="22" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/><circle cx="42" cy="36" r="2.2" fill="#f2a7d8" opacity=".7"/></svg>`,
   'skull-sanctum': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 5C21 5 12 14 12 26c0 6.5 2.8 11.4 6.8 14.6V47c0 2.2 1.8 4 4 4h18.4c2.2 0 4-1.8 4-4v-6.4c4-3.2 6.8-8.1 6.8-14.6 0-12-9-21-20-21z" fill="#262130" stroke="#57506b" stroke-width="1.6"/><path d="M40 10l-3.5 5.5 2.5 3-3.5 4.5" stroke="#57506b" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M19 25l7.5-2.5 1 7.5-6.5 3.5z" fill="#0a0812"/><path d="M45 25l-7.5-2.5-1 7.5 6.5 3.5z" fill="#0a0812"/><g class="mpupil"><circle cx="24" cy="27" r="3.4" fill="#e03030" opacity=".3"/><circle cx="40" cy="27" r="3.4" fill="#e03030" opacity=".3"/><circle cx="24" cy="27" r="1.9" fill="#ffb02e"/><circle cx="40" cy="27" r="1.9" fill="#ffb02e"/></g><path d="M32 33l-2.6 6h5.2z" fill="#0a0812"/><path d="M26 46v6M30.5 46v7M35.5 46v7M40 46v6" stroke="#57506b" stroke-width="1.3"/></svg>`,
+  'pixel-sunset': `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x='10' y='26' w='30' h='16' fill='#ff4dff'/%3E%3Crect x='12' y='20' w='26' h='8' fill='#d93ad9'/%3E%3Ccircle cx='14' cy='44' r='4' fill='#0a0514'/%3E%3Ccircle cx='36' cy='44' r='4' fill='#0a0514'/%3E%3Ccircle cx='14' cy='44' r='1.2' fill='#ffd6ff'/%3E%3Ccircle cx='36' cy='44' r='1.2' fill='#ffd6ff'/%3E%3Crect x='20' y='16' w='10' h='6' fill='#ffd6ff'/%3E%3C/svg%3E"`,
+  'witcher-sunset': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 18c0-6 6-10 12-10s12 4 12 10v8l-4-4-4 4-4-4-4 4z" fill="#d4a373"/><circle cx="26" cy="20" r="3" fill="#f0e6d8"/><circle cx="38" cy="20" r="3" fill="#f0e6d8"/><path d="M26 26c0 4-4 8-8 8s-8-4-8-8z" fill="#0f1214"/><path d="M38 26c0 4-4 8-8 8s-8-4-8-8z" fill="#0f1214"/></svg>`,
+  'gears-skull': `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6C23 6 14 11 14 20c0 6 3 11 7 14V56c0 2 2 4 4 4h14c2 0 4-2 4-4V34c4-3 7-8 7-14 0-9-9-14-14-14z" fill="#140808" stroke="#4a1616" stroke-width="1.6"/><path d="M26 20c0-3 3-6 6-6s6 3 6 6z" fill="#080404"/><path d="M38 20c0-3 3-6 6-6s6 3 6 6z" fill="#080404"/><circle cx="26" cy="21" r="2.2" fill="#ff6b6b"/><circle cx="38" cy="21" r="2.2" fill="#ff6b6b"/><path d="M32 33l-2.6 6h5.2z" fill="#080404"/></svg>`,
 };
 function themeMascot() {
   const m = loadPrefs().mode;
@@ -2726,7 +2732,7 @@ async function renderComments(container, mangaId, chapterId) {
 
 function commentItem(c) {
   const authorName = nameColorHtml(c.display_name || 'Reader', c.name_color);
-  const face = `<span class="comment-avatar${c.frame ? ` av-frame-${esc(String(c.frame).replace(/[^a-z-]/g, ''))}` : ''}">${esc((c.display_name || 'Reader')[0].toUpperCase())}</span>`;
+  const face = `<img class="comment-avatar${c.frame ? ` av-frame-${esc(String(c.frame).replace(/[^a-z-]/g, ''))}` : ''}" src="${avatarUrl(c)}" alt="${esc((c.display_name || 'Reader')[0].toUpperCase())}" />`;
   return `
     <div class="comment-item ${c.pinned ? 'pinned' : ''}">
       <div class="comment-meta">
