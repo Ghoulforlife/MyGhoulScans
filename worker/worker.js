@@ -802,12 +802,12 @@ const SHOP_CATALOG = [
   { id: 'theme-forest', slot: 'theme', name: 'Forest Night', price: 400, value: 'forest-night', desc: 'Deep-green app theme' },
   { id: 'theme-sunset', slot: 'theme', name: 'Ember Sunset', price: 500, value: 'sunset-ember', desc: 'Burnt-orange app theme' },
   { id: 'theme-royal', slot: 'theme', name: 'Royal Violet', price: 1000, value: 'royal-violet', desc: 'Regal purple app theme' },
-  { id: 'theme-toon', slot: 'theme', name: 'Toon Mischief', price: 250, value: 'toon-mischief', desc: 'Animated cartoon night with a mischievous buddy' },
-  { id: 'theme-haunt', slot: 'theme', name: 'Haunted Hollow', price: 400, value: 'haunted-hollow', desc: 'Spectral violet night with drifting ghosts' },
-  { id: 'theme-skull', slot: 'theme', name: 'Skull Sanctum', price: 600, value: 'skull-sanctum', desc: 'Blood-on-black night with a watching skull' },
-  { id: 'theme-pixel', slot: 'theme', name: 'Pixel Sunset', price: 500, value: 'pixel-sunset', desc: 'Synthwave pixel sunset night' },
-  { id: 'theme-witcher', slot: 'theme', name: 'Witcher Sunset', price: 550, value: 'witcher-sunset', desc: 'Golden hour fantasy night' },
-  { id: 'theme-gears', slot: 'theme', name: 'Gears Skull', price: 650, value: 'gears-skull', desc: 'Blood-and-steel dark emblem night' },
+  { id: 'theme-toon', slot: 'theme', name: 'Toon Mischief', price: 800, value: 'toon-mischief', desc: 'Animated cartoon night with a mischievous buddy' },
+  { id: 'theme-haunt', slot: 'theme', name: 'Haunted Hollow', price: 900, value: 'haunted-hollow', desc: 'Spectral violet night with drifting ghosts' },
+  { id: 'theme-skull', slot: 'theme', name: 'Skull Sanctum', price: 1200, value: 'skull-sanctum', desc: 'Blood-on-black night with a watching skull' },
+  { id: 'theme-pixel', slot: 'theme', name: 'Pixel Sunset', price: 700, value: 'pixel-sunset', desc: 'Synthwave pixel sunset night' },
+  { id: 'theme-witcher', slot: 'theme', name: 'Witcher Sunset', price: 800, value: 'witcher-sunset', desc: 'Golden hour fantasy night' },
+  { id: 'theme-gears', slot: 'theme', name: 'Gears Skull', price: 1000, value: 'gears-skull', desc: 'Blood-and-steel dark emblem night' },
 ];
 const SHOP_SLOT_COL = { color: 'name_color', title: 'title', frame: 'frame', theme: 'theme' };
 async function authUser(req, env) {

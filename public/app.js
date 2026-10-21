@@ -3262,10 +3262,9 @@ function shopPreviewHtml(it) {
   if (it.slot === 'frame') {
     return `<div class="shop-swatch">${wrapAvatarFrame(`<span class="comment-avatar av-frame-${esc(String(it.value).replace(/[^a-z-]/g, ''))}">R</span>`, it.value)}</div>`;
   }
-  if (it.slot === 'theme' && MASCOT_SVGS[it.value]) {
-    return `<div class="shop-swatch shop-theme-art" data-shop-theme="${esc(it.value)}">${MASCOT_SVGS[it.value]}</div>`;
+  if (it.slot === 'theme') {
+    return `<div class="shop-swatch shop-theme-dot" data-shop-theme="${esc(it.value)}">${esc(it.name[0])}</div>`;
   }
-  return `<div class="shop-swatch shop-theme-dot" data-shop-theme="${esc(it.value)}">Aa</div>`;
 }
 async function renderShop() {
   view.innerHTML = `
