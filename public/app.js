@@ -48,6 +48,7 @@ function esc(s) {
 // covers cached/snapshot responses).
 function cleanDesc(s) {
   let t = String(s ?? '');
+  // BUILD_MARKER_TEST_12345 - verifying build picks up app.js changes
   t = t.replace(/\[([^\]]{1,120})\]\((https?:[^)\s]{1,500})\)/gi, '$1');
   t = t.replace(/https?:\/\/[^\s)'"]+/gi, '');
   t = t.replace(/\*\*/g, '');
@@ -3262,9 +3263,10 @@ function shopPreviewHtml(it) {
   if (it.slot === 'frame') {
     return `<div class="shop-swatch">${wrapAvatarFrame(`<span class="comment-avatar av-frame-${esc(String(it.value).replace(/[^a-z-]/g, ''))}">R</span>`, it.value)}</div>`;
   }
-  if (it.slot === 'theme') {
-    return `<div class="shop-swatch shop-theme-dot" data-shop-theme="${esc(it.value)}">${esc(it.name[0])}</div>`;
+  if (it.slot === 'theme' && MASCOT_SVGS[it.value]) {
+    return `<div class="shop-swatch shop-theme-art" data-shop-theme="${esc(it.value)}">${MASCOT_SVGS[it.value]}</div>`;
   }
+    return `<div class="shop-swatch shop-theme-dot" data-shop-theme="${esc(it.value)}">${esc(it.value.charAt(0).toUpperCase())}</div>`;
 }
 async function renderShop() {
   view.innerHTML = `
