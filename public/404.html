@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MyGhoulScans</title>
+  <script>
+    // GitHub Pages has no rewrite rules: a deep pretty URL (e.g.
+    // /MyGhoulScans/title/abc) lands here. Stash the path and hand off to
+    // the app shell, which restores it before booting.
+    (function () {
+      var segs = location.pathname.split('/');
+      var base = (/\.github\.io$/i.test(location.hostname) && segs[1]) ? '/' + segs[1] : '';
+      var deep = location.pathname + location.search;
+      try { sessionStorage.setItem('mgs-deep-link', deep); } catch (e) {}
+      location.replace(base + '/');
+    })();
+  </script>
+</head>
+<body></body>
+</html>

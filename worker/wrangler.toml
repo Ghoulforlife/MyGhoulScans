@@ -1,0 +1,18 @@
+# Cloudflare Worker config for the MyGhoulScans static API.
+# 1. npx wrangler login
+# 2. npx wrangler d1 create myghoulscans   (then paste the database_id below)
+# 3. Run worker/schema.sql once on that D1 database (Cloudflare dashboard → D1 → Console)
+# 4. npx wrangler deploy
+name = "myghoulscans-api"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Uncomment after step 2:
+[[d1_databases]]
+binding = "DB"
+database_name = "myghoulscans-db"
+database_id = "1d152005-dc4f-43a6-8f91-91235897c027"
+
+# Optional: point at your own comick-source-api instance instead of the public one.
+# [vars]
+# COMICK_API_BASE = "https://comick-source-api.notaspider.dev"
