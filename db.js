@@ -37,6 +37,13 @@ db.exec(`
     PRIMARY KEY (user_id, manga_id)
   );
 
+  CREATE TABLE IF NOT EXISTS user_follows (
+    follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    followed_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (follower_id, followed_id)
+  );
+
   CREATE TABLE IF NOT EXISTS progress (
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     manga_id   TEXT NOT NULL,
@@ -238,22 +245,22 @@ function trackReadingTime(userId) {
 }
 
 const LB_USER_COLS = 'u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame';
-// Community leaderboards (display names only — never emails). Only users
-// with a positive score appear.
+// Community leaderboards (display names only — never emails).
+// Every user with a display name appears; users with 0 score still rank at the bottom.
 function leaderboard(by) {
   if (by === 'hours') {
-    return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.read_seconds,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+    return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL ORDER BY value DESC, u.id ASC LIMIT 20`).all();
   }
   if (by === 'bookmarks') {
-    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(f.manga_id) AS value FROM users u JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(f.manga_id) AS value FROM users u LEFT JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`).all();
   }
   if (by === 'likes') {
-    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(c.id) AS value FROM users u LEFT JOIN comments c ON c.user_id = u.id AND c.blocked = 0 LEFT JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`).all();
   }
   if (by === 'dislikes') {
-    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+    return db.prepare(`SELECT ${LB_USER_COLS}, COUNT(c.id) AS value FROM users u LEFT JOIN comments c ON c.user_id = u.id AND c.blocked = 0 LEFT JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`).all();
   }
-  return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.rp,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`).all();
+  return db.prepare(`SELECT ${LB_USER_COLS}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL ORDER BY value DESC, u.id ASC LIMIT 20`).all();
 }
 
 function ownedOriginalSeries(userId) {
@@ -310,6 +317,28 @@ function listFollows(userId) {
 
 function isFollowed(userId, mangaId) {
   return !!db.prepare('SELECT 1 FROM follows WHERE user_id = ? AND manga_id = ?').get(userId, mangaId);
+}
+
+// ---------- User follows ----------
+function addUserFollow(followerId, followedId) {
+  if (followerId === followedId) return;
+  db.prepare('INSERT OR IGNORE INTO user_follows (follower_id, followed_id) VALUES (?, ?)').run(followerId, followedId);
+}
+
+function removeUserFollow(followerId, followedId) {
+  db.prepare('DELETE FROM user_follows WHERE follower_id = ? AND followed_id = ?').run(followerId, followedId);
+}
+
+function isUserFollowed(followerId, followedId) {
+  return !!db.prepare('SELECT 1 FROM user_follows WHERE follower_id = ? AND followed_id = ?').get(followerId, followedId);
+}
+
+function listUserFollows(userId) {
+  return db.prepare(`SELECT u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame FROM user_follows f JOIN users u ON u.id = f.followed_id WHERE f.follower_id = ? ORDER BY f.added_at DESC`).all(userId);
+}
+
+function listUserFollowers(userId) {
+  return db.prepare(`SELECT u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame FROM user_follows f JOIN users u ON u.id = f.follower_id WHERE f.followed_id = ? ORDER BY f.added_at DESC`).all(userId);
 }
 
 // ---------- Progress ----------
@@ -663,6 +692,11 @@ module.exports = {
   removeFollow,
   listFollows,
   isFollowed,
+  addUserFollow,
+  removeUserFollow,
+  isUserFollowed,
+  listUserFollows,
+  listUserFollowers,
   saveProgress,
   getProgress,
   listProgress,

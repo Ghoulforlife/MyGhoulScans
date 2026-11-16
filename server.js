@@ -319,6 +319,60 @@ app.delete('/api/library', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- User follows ----------
+// Follow / unfollow another reader. Public to read, auth to write.
+app.get('/api/user/:userId/follow-status', (req, res) => {
+  const me = currentUser(req);
+  const targetId = parseInt(req.params.userId, 10);
+  res.json({ following: !!me && db.isUserFollowed(me.id, targetId) });
+});
+
+app.post('/api/user/follows/:userId', requireAuth, (req, res) => {
+  const targetId = parseInt(req.params.userId, 10);
+  if (targetId === req.user.id) return res.status(400).json({ error: "Can't follow yourself" });
+  db.addUserFollow(req.user.id, targetId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/user/follows/:userId', requireAuth, (req, res) => {
+  const targetId = parseInt(req.params.userId, 10);
+  db.removeUserFollow(req.user.id, targetId);
+  res.json({ ok: true });
+});
+
+app.get('/api/user/follows', requireAuth, (req, res) => {
+  res.json({ data: db.listUserFollows(req.user.id) });
+});
+
+app.get('/api/user/:userId/followers', (req, res) => {
+  const targetId = parseInt(req.params.userId, 10);
+  res.json({ data: db.listUserFollowers(targetId) });
+});
+
+// ---------- User profile ----------
+app.get('/api/user/:userId', (req, res) => {
+  const targetId = parseInt(req.params.userId, 10);
+  const u = db.findById(targetId);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  const progress = db.listProgress(targetId).map((p) => ({ ...p, manga_id: String(p.manga_id) }));
+  const follows = db.listFollows(targetId).map((f) => String(f.manga_id));
+  const me = currentUser(req);
+  res.json({
+    user: {
+      id: u.id,
+      display_name: u.display_name,
+      avatar: u.avatar,
+      name_color: u.name_color,
+      title: u.title,
+      frame: u.frame,
+      rp: u.rp,
+    },
+    reading: progress,
+    library: follows,
+    following: !!me && db.isUserFollowed(me.id, targetId),
+  });
+});
+
 // ---------- Progress ----------
 app.post('/api/progress/:mangaId', requireAuth, (req, res) => {
   const { chapterId, page, chapterLabel } = req.body || {};

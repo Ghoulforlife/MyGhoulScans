@@ -1256,6 +1256,67 @@ async function handleAccount(req, env, p, q) {
       else await DB.prepare('DELETE FROM follows WHERE user_id = ? AND manga_id = ?').bind(me.id, id).run();
       return json({ ok: true });
     }
+    // User follows
+    if (p === '/user/follows' && req.method === 'GET') {
+      needDb();
+      needAuth();
+      const rows = await DB.prepare(`SELECT u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame FROM user_follows f JOIN users u ON u.id = f.followed_id WHERE f.follower_id = ? ORDER BY f.added_at DESC`).bind(me.id).all();
+      return json({ data: rows.results });
+    }
+    m = p.match(/^\/user\/follows\/(.+)$/);
+    if (m && req.method === 'POST') {
+      needDb();
+      needAuth();
+      const targetId = parseInt(decodeURIComponent(m[1]), 10);
+      if (targetId === me.id) return err("Can't follow yourself", 400);
+      await DB.prepare('INSERT OR IGNORE INTO user_follows (follower_id, followed_id) VALUES (?, ?)').bind(me.id, targetId).run();
+      return json({ ok: true });
+    }
+    if (m && req.method === 'DELETE') {
+      needDb();
+      needAuth();
+      const targetId = parseInt(decodeURIComponent(m[1]), 10);
+      await DB.prepare('DELETE FROM user_follows WHERE follower_id = ? AND followed_id = ?').bind(me.id, targetId).run();
+      return json({ ok: true });
+    }
+    m = p.match(/^\/user\/(.+)\/follow-status$/);
+    if (m && req.method === 'GET') {
+      const targetId = parseInt(decodeURIComponent(m[1]), 10);
+      let following = false;
+      if (me) {
+        const r = await DB.prepare('SELECT 1 AS x FROM user_follows WHERE follower_id = ? AND followed_id = ?').bind(me.id, targetId).first();
+        following = !!r;
+      }
+      return json({ following });
+    }
+    m = p.match(/^\/user\/(.+)\/followers$/);
+    if (m && req.method === 'GET') {
+      needDb();
+      const targetId = parseInt(decodeURIComponent(m[1]), 10);
+      const rows = await DB.prepare(`SELECT u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame FROM user_follows f JOIN users u ON u.id = f.follower_id WHERE f.followed_id = ? ORDER BY f.added_at DESC`).bind(targetId).all();
+      return json({ data: rows.results });
+    }
+    // User profile
+    m = p.match(/^\/user\/(.+)$/);
+    if (m && req.method === 'GET') {
+      needDb();
+      const targetId = parseInt(decodeURIComponent(m[1]), 10);
+      const u = await DB.prepare('SELECT id, display_name, avatar, name_color, title, frame, rp FROM users WHERE id = ?').bind(targetId).first();
+      if (!u) return err('User not found', 404);
+      const progress = await DB.prepare('SELECT manga_id, chapter_id, page, chapter_label, updated_at FROM progress WHERE user_id = ? ORDER BY updated_at DESC').bind(targetId).all().catch(() => ({ results: [] }));
+      const follows = await DB.prepare('SELECT manga_id FROM follows WHERE user_id = ?').bind(targetId).all().catch(() => ({ results: [] }));
+      let following = false;
+      if (me) {
+        const r = await DB.prepare('SELECT 1 AS x FROM user_follows WHERE follower_id = ? AND followed_id = ?').bind(me.id, targetId).first();
+        following = !!r;
+      }
+      return json({
+        user: { id: u.id, display_name: u.display_name, avatar: u.avatar, name_color: u.name_color, title: u.title, frame: u.frame, rp: u.rp },
+        reading: progress.results.map((p) => ({ ...p, manga_id: String(p.manga_id) })),
+        library: follows.results.map((f) => String(f.manga_id)),
+        following,
+      });
+    }
     // Progress
     if (p === '/progress' && req.method === 'GET') {
       needDb();

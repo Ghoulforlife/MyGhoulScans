@@ -1458,3 +1458,37 @@ html[data-theme="gears-skull"] .manga-card:hover::after { background-image: url(
 .shop-theme-art[data-shop-theme="pixel-sunset"] { background: #140c1a; border-color: #d93ad9; }
 .shop-theme-art[data-shop-theme="witcher-sunset"] { background: #1c1918; border-color: #bc8c54; }
 .shop-theme-art[data-shop-theme="gears-skull"] { background: #140808; border-color: #b82828; }
+
+/* ---------- follow badge ---------- */
+.follow-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  margin-left: 6px; box-shadow: 0 0 0 1px rgba(0,0,0,.3);
+}
+/* ---------- user profile ---------- */
+.prof-card { max-width: 640px; margin: 12px auto 0; }
+.prof-header { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+.prof-header .lb-av img { width: 64px; height: 64px; }
+.prof-name { font-size: 17px; font-weight: 700; }
+.prof-rp { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.prof-section { margin-top: 14px; }
+.prof-section-title { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.prof-reading { display: flex; flex-direction: column; gap: 8px; }
+.prof-read-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer;
+}
+.prof-read-item:hover { border-color: var(--accent); }
+.prof-read-thumb { width: 48px; height: 64px; flex-shrink: 0; border-radius: 4px; overflow: hidden; background: var(--panel); }
+.prof-read-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.prof-read-info { flex: 1; min-width: 0; }
+.prof-read-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prof-read-ch { font-size: 12px; color: var(--muted); }
+.prof-library { display: flex; flex-wrap: wrap; gap: 10px; }
+.prof-lib-item { width: 72px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.prof-lib-thumb { width: 72px; height: 96px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border); background: var(--panel); }
+.prof-lib-title { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.prof-lib-item:hover .prof-lib-title { color: var(--accent); }
+.prof-follow { width: 100%; }

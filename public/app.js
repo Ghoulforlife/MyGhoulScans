@@ -374,6 +374,7 @@ function route() {
   if (page === 'library') return renderLibrary();
   if (page === 'popular') return renderPopular();
   if (page === 'leaderboard') return renderLeaderboard();
+  if (page === 'user') return renderUserProfile(parts[1]);
   if (page === 'discover') return renderDiscover();
   if (page === 'originals') return renderOriginals();
   if (page === 'original') return renderOriginalSeries(parts[1]);
@@ -2689,6 +2690,15 @@ async function renderComments(container, mangaId, chapterId) {
   }
   const { data: comments, canPost, blockedCount } = res;
 
+  // Who the current user follows — for "following" badges on comments
+  let followingSet = new Set();
+  if (currentUser) {
+    try {
+      const { data: follows } = await api('/api/user/follows');
+      followingSet = new Set((follows || []).map((f) => String(f.id)));
+    } catch {}
+  }
+
   const form = canPost
     ? `<div class="comment-form">
         ${mascotBuddyHtml()}
@@ -2698,7 +2708,7 @@ async function renderComments(container, mangaId, chapterId) {
     : `<div class="comment-login">Sign in to leave a comment under this chapter. <button class="btn primary" id="commentLogin">Log in / Sign up</button></div>`;
 
   let list = comments.length
-    ? `<div class="comment-list">${comments.map(commentItem).join('')}</div>`
+    ? `<div class="comment-list">${comments.map((c) => commentItem(c, followingSet)).join('')}</div>`
     : `<div class="centered small">No comments yet — start the discussion.</div>`;
 
   if (blockedCount) list += `<div class="small" style="margin-top:10px;color:var(--muted)">${blockedCount} removed comment${blockedCount > 1 ? 's' : ''} (hidden).</div>`;
@@ -2731,13 +2741,15 @@ async function renderComments(container, mangaId, chapterId) {
   }));
 }
 
-function commentItem(c) {
+function commentItem(c, followingSet) {
   const authorName = nameColorHtml(c.display_name || 'Reader', c.name_color);
+  const isFollowing = currentUser && followingSet.has(String(c.user_id));
+  const followBadge = isFollowing ? '<span class="follow-badge" title="You follow this reader">&#10004;</span>' : '';
   const face = `<img class="comment-avatar${c.frame ? ` av-frame-${esc(String(c.frame).replace(/[^a-z-]/g, ''))}` : ''}" src="${avatarUrl(c)}" alt="${esc((c.display_name || 'Reader')[0].toUpperCase())}" />`;
   return `
     <div class="comment-item ${c.pinned ? 'pinned' : ''}">
       <div class="comment-meta">
-        <span class="comment-author">${wrapAvatarFrame(face, c.frame)} ${authorName}${titleBadgeHtml(c.title)}</span>
+        <span class="comment-author">${wrapAvatarFrame(face, c.frame)} ${authorName}${titleBadgeHtml(c.title)}${followBadge}</span>
         <span class="comment-time">${esc(fmtTime(c.created_at))}</span>
       </div>
       <div class="comment-body">${esc(c.body)}</div>
@@ -3735,6 +3747,9 @@ async function renderLeaderboard(active, fresh) {
       const av = u.avatar
         ? (String(u.avatar).startsWith('data:') ? String(u.avatar) : `/uploads/${esc(u.avatar)}`)
         : `/api/avatar/${u.id}.svg`;
+      const meId = currentUser ? currentUser.id : null;
+      const isMe = meId && Number(u.id) === meId;
+      const followBtn = isMe ? '' : `<button class="btn ghost lb-follow" data-uid="${esc(u.id)}" data-following="0">Follow</button>`;
       return `
         <div class="pop-item lb-item">
           <div class="pop-rank">${i + 1}</div>
@@ -3746,10 +3761,151 @@ async function renderLeaderboard(active, fresh) {
             <div class="pop-track"><div class="pop-bar" style="width:${w}%"></div></div>
           </div>
           <div class="pop-count" title="${esc(LB_TABS.find(([id]) => id === by)[1])}"><b>${esc(lbValueLabel(by, u.value))}</b></div>
+          ${followBtn}
         </div>`;
     }).join('');
+    // Wire follow buttons + profile clicks
+    list.querySelectorAll('.lb-follow').forEach((b) => {
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const uid = parseInt(b.dataset.uid, 10);
+        const following = b.dataset.following === '1';
+        try {
+          if (following) {
+            await api(`/api/user/follows/${uid}`, { method: 'DELETE' });
+            b.dataset.following = '0';
+            b.textContent = 'Follow';
+            b.classList.remove('following');
+          } else {
+            await api(`/api/user/follows/${uid}`, { method: 'POST' });
+            b.dataset.following = '1';
+            b.textContent = 'Following';
+            b.classList.add('following');
+          }
+        } catch (e2) { toast(e2.message); }
+      });
+    });
+    list.querySelectorAll('.lb-item').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.lb-follow')) return;
+        const uid = el.querySelector('.lb-follow')?.dataset.uid;
+        if (uid) location.hash = `#/user/${uid}`;
+      });
+    });
   } catch (e) {
     list.innerHTML = `<div class="centered">Could not load leaderboard: ${esc(e.message)}</div>`;
+  }
+}
+
+// ---------- user profile ----------
+async function renderUserProfile(userId) {
+  if (!userId) return renderHome();
+  const uid = parseInt(userId, 10);
+  if (!uid) return renderHome();
+  view.innerHTML = `
+    <div class="page-title" style="display:flex;align-items:center;gap:10px">Reader Profile
+      <button class="btn ghost" id="profBack" style="margin-left:auto">&#10094; Back</button>
+    </div>
+    <div class="pop-list" id="profContent">${spinner()}</div>`;
+  view.querySelector('#profBack')?.addEventListener('click', () => { location.hash = '#/leaderboard'; });
+  const content = document.getElementById('profContent');
+  try {
+    const { data } = await api(`/api/user/${uid}`);
+    const u = data.user;
+    const reading = data.reading || [];
+    const library = data.library || [];
+    const following = data.following;
+    const me = currentUser;
+    const isMe = me && me.id === uid;
+    const followBtn = isMe ? '' : `<button class="btn primary prof-follow" data-uid="${uid}" data-following="${following ? '1' : '0'}">${following ? 'Following' : 'Follow'}</button>`;
+    content.innerHTML = `
+      <div class="prof-card">
+        <div class="prof-header">
+          <span class="lb-av${(u.frame ? ` av-frame-${String(u.frame).replace(/[^a-z-]/g, '')}` : '')}">
+            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${u.avatar ? (String(u.avatar).startsWith('data:') ? u.avatar : `/uploads/${esc(u.avatar)}`) : `/api/avatar/${uid}.svg`}" alt="" />
+          </span>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:8px"><div class="prof-name">${styledNameHtml(u, 'Reader')}${titleBadgeHtml(u.title)}</div>${followBtn}</div>
+            <div class="prof-rp">&#129689; ${Number(u.rp || 0).toLocaleString()} RP</div>
+          </div>
+        </div>
+        <div class="prof-section">
+          <div class="prof-section-title">Currently Reading</div>
+          <div class="prof-reading" id="profReading">${reading.length ? reading.map((p) => `
+            <div class="prof-read-item" data-mid="${esc(p.manga_id)}" data-cid="${esc(p.chapter_id)}" data-page="${p.page}">
+              <div class="prof-read-thumb">${spinner(1)}</div>
+              <div class="prof-read-info">
+                <div class="prof-read-title">Loading…</div>
+                <div class="prof-read-ch">Ch. ${esc(String(p.chapter_label || p.chapter_id))}</div>
+              </div>
+            </div>`).join('') : '<div class="centered small">Not reading anything yet</div>'}</div>
+        </div>
+        <div class="prof-section">
+          <div class="prof-section-title">Library (${library.length})</div>
+          <div class="prof-library" id="profLibrary">${library.length ? `<div class="centered small">Loading…</div>` : '<div class="centered small">Library is empty</div>'}</div>
+        </div>
+      </div>`;
+    // Resolve reading titles
+    const cxReading = reading.filter((p) => String(p.manga_id).startsWith('cx:'));
+    if (cxReading.length) {
+      try {
+        const byId = await resolveComickIds(cxReading.map((p) => p.manga_id));
+        const readingEl = document.getElementById('profReading');
+        readingEl.querySelectorAll('.prof-read-item').forEach((el) => {
+          const mid = el.dataset.mid;
+          const m = byId.get(mid);
+          if (m) {
+            el.querySelector('.prof-read-thumb').innerHTML = `<img class="prof-read-thumb-img" loading="lazy" referrerpolicy="no-referrer" src="/api/img?u=${encodeURIComponent(m.cover || '')}" alt="" />`;
+            el.querySelector('.prof-read-title').textContent = m.title;
+          }
+        });
+      } catch {}
+    }
+    // Resolve library titles
+    const cxLib = library.filter((id) => String(id).startsWith('cx:'));
+    if (cxLib.length) {
+      try {
+        const byId = await resolveComickIds(cxLib);
+        const libEl = document.getElementById('profLibrary');
+        libEl.innerHTML = cxLib.map((id) => {
+          const m = byId.get(id);
+          if (!m) return '';
+          return `
+            <div class="prof-lib-item" data-mid="${esc(id)}">
+              <img class="prof-lib-thumb" loading="lazy" referrerpolicy="no-referrer" src="/api/img?u=${encodeURIComponent(m.cover || '')}" alt="" />
+              <div class="prof-lib-title">${esc(m.title)}</div>
+            </div>`;
+        }).join('');
+        libEl.querySelectorAll('.prof-lib-item').forEach((el) => {
+          el.addEventListener('click', () => { location.hash = titleHash(el.dataset.mid); });
+        });
+      } catch {}
+    }
+    // Wire reading items
+    document.getElementById('profReading')?.querySelectorAll('.prof-read-item').forEach((el) => {
+      el.addEventListener('click', () => { location.hash = `#/reader/${el.dataset.mid}/${encodeURIComponent(el.dataset.cid)}/${el.dataset.page}`; });
+    });
+    // Wire follow button
+    content.querySelector('.prof-follow')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const b = content.querySelector('.prof-follow');
+      const following = b.dataset.following === '1';
+      try {
+        if (following) {
+          await api(`/api/user/follows/${uid}`, { method: 'DELETE' });
+          b.dataset.following = '0';
+          b.textContent = 'Follow';
+          b.classList.remove('following');
+        } else {
+          await api(`/api/user/follows/${uid}`, { method: 'POST' });
+          b.dataset.following = '1';
+          b.textContent = 'Following';
+          b.classList.add('following');
+        }
+      } catch (e2) { toast(e2.message); }
+    });
+  } catch (e) {
+    content.innerHTML = `<div class="centered">Could not load profile: ${esc(e.message)}</div>`;
   }
 }
 

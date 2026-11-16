@@ -82,3 +82,11 @@ CREATE TABLE IF NOT EXISTS recs (
   UNIQUE (manga_id, rec_manga_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_recs_manga ON recs(manga_id);
+
+-- User-to-user follows (social)
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  followed_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (follower_id, followed_id)
+);
