@@ -109,12 +109,32 @@ function latestLabelOf(data) {
   return '';
 }
 
-// Profile picture: data-URL (static build), uploaded file, or a generated
-// initial icon (unique hue per user)
+// Profile picture: data-URL (static build), uploaded file proxied through
+// /api/img (works on the Cloudflare Worker/static build), or a generated
+// initial icon (unique hue per user — client-side SVG, no server needed).
 function avatarUrl(u) {
   if (!u) return '/assets/chibi.png';
-  if (u.avatar) return u.avatar.startsWith('data:') ? u.avatar : `/uploads/${u.avatar}`;
-  return `/api/avatar/${u.id}.svg`;
+  if (u.avatar) {
+    if (String(u.avatar).startsWith('data:')) return String(u.avatar);
+    // Proxy relative avatar paths through /api/img so they load on the
+    // Worker/static build (no file system access there).
+    const fullUrl = String(u.avatar).startsWith('http')
+      ? String(u.avatar)
+      : location.origin + '/uploads/' + String(u.avatar);
+    return `/api/img?u=${encodeURIComponent(fullUrl)}`;
+  }
+  // No custom avatar: generate a deterministic SVG client-side (unique hue
+  // per user ID, no server round-trip needed).
+  return defaultAvatarUrl(u.id, u.display_name || 'Reader');
+}
+
+function defaultAvatarUrl(userId, name) {
+  const id = Number(userId) || 0;
+  let h = 0;
+  for (const c of `user-${id}`) h = (h * 31 + c.charCodeAt(0)) % 360;
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="hsl(${h},55%,38%)"/><text x="48" y="62" font-family="sans-serif" font-size="38" font-weight="bold" fill="#fff" text-anchor="middle">${initials}</text></svg>`;
+  return 'data:image/svg+xml;base64,' + btoa(svg);
 }
 // Shop cosmetics presentation helpers (values are server-validated).
 function avatarFrameClass(u) {
@@ -3744,9 +3764,7 @@ async function renderLeaderboard(active, fresh) {
     const max = Math.max(...data.map((r) => Number(r.value || 0)), 1);
     list.innerHTML = data.map((u, i) => {
       const w = Math.round((Number(u.value || 0) / max) * 100);
-      const av = u.avatar
-        ? (String(u.avatar).startsWith('data:') ? String(u.avatar) : `/uploads/${esc(u.avatar)}`)
-        : `/api/avatar/${u.id}.svg`;
+      const av = avatarUrl(u);
       const meId = currentUser ? currentUser.id : null;
       const isMe = meId && Number(u.id) === meId;
       const followBtn = isMe ? '' : `<button class="btn ghost lb-follow" data-uid="${esc(u.id)}" data-following="0">Follow</button>`;
@@ -3822,7 +3840,7 @@ async function renderUserProfile(userId) {
       <div class="prof-card">
         <div class="prof-header">
           <span class="lb-av${(u.frame ? ` av-frame-${String(u.frame).replace(/[^a-z-]/g, '')}` : '')}">
-            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${u.avatar ? (String(u.avatar).startsWith('data:') ? u.avatar : `/uploads/${esc(u.avatar)}`) : `/api/avatar/${uid}.svg`}" alt="" />
+            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${avatarUrl(u)}" alt="" />
           </span>
           <div>
             <div style="display:flex;align-items:baseline;gap:8px"><div class="prof-name">${styledNameHtml(u, 'Reader')}${titleBadgeHtml(u.title)}</div>${followBtn}</div>
