@@ -1432,11 +1432,11 @@ async function handleAccount(req, env, p, q) {
       if (!['rp', 'hours', 'bookmarks', 'likes', 'dislikes'].includes(by)) return err('unknown board', 400);
       const U = 'u.id, u.display_name, u.avatar, u.name_color, u.title, u.frame';
       let sql;
-      if (by === 'hours') sql = `SELECT ${U}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.read_seconds,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
-      else if (by === 'bookmarks') sql = `SELECT ${U}, COUNT(f.manga_id) AS value FROM users u JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
-      else if (by === 'likes') sql = `SELECT ${U}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
-      else if (by === 'dislikes') sql = `SELECT ${U}, COUNT(*) AS value FROM users u JOIN comments c ON c.user_id = u.id AND c.blocked = 0 JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id HAVING value > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
-      else sql = `SELECT ${U}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL AND COALESCE(u.rp,0) > 0 ORDER BY value DESC, u.id ASC LIMIT 20`;
+      if (by === 'hours') sql = `SELECT ${U}, COALESCE(u.read_seconds,0) AS value FROM users u WHERE u.display_name IS NOT NULL ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'bookmarks') sql = `SELECT ${U}, COUNT(f.manga_id) AS value FROM users u LEFT JOIN follows f ON f.user_id = u.id WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'likes') sql = `SELECT ${U}, COUNT(c.id) AS value FROM users u LEFT JOIN comments c ON c.user_id = u.id AND c.blocked = 0 LEFT JOIN comment_votes v ON v.comment_id = c.id AND v.vote = 1 WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else if (by === 'dislikes') sql = `SELECT ${U}, COUNT(c.id) AS value FROM users u LEFT JOIN comments c ON c.user_id = u.id AND c.blocked = 0 LEFT JOIN comment_votes v ON v.comment_id = c.id AND v.vote = -1 WHERE u.display_name IS NOT NULL GROUP BY u.id ORDER BY value DESC, u.id ASC LIMIT 20`;
+      else sql = `SELECT ${U}, COALESCE(u.rp,0) AS value FROM users u WHERE u.display_name IS NOT NULL ORDER BY value DESC, u.id ASC LIMIT 20`;
       const rows = await DB.prepare(sql).all().catch(() => ({ results: [] }));
       return json({ by, data: rows.results }, 200, 60);
     }
