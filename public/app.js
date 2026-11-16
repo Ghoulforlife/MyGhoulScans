@@ -134,7 +134,9 @@ function defaultAvatarUrl(userId, name) {
   for (const c of `user-${id}`) h = (h * 31 + c.charCodeAt(0)) % 360;
   const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="hsl(${h},55%,38%)"/><text x="48" y="62" font-family="sans-serif" font-size="38" font-weight="bold" fill="#fff" text-anchor="middle">${initials}</text></svg>`;
-  return 'data:image/svg+xml;base64,' + btoa(svg);
+  try {
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  } catch { return '/assets/chibi.png'; }
 }
 // Shop cosmetics presentation helpers (values are server-validated).
 function avatarFrameClass(u) {
@@ -2765,7 +2767,7 @@ function commentItem(c, followingSet) {
   const authorName = nameColorHtml(c.display_name || 'Reader', c.name_color);
   const isFollowing = currentUser && followingSet.has(String(c.user_id));
   const followBadge = isFollowing ? '<span class="follow-badge" title="You follow this reader">&#10004;</span>' : '';
-  const face = `<img class="comment-avatar${c.frame ? ` av-frame-${esc(String(c.frame).replace(/[^a-z-]/g, ''))}` : ''}" src="${avatarUrl(c)}" alt="${esc((c.display_name || 'Reader')[0].toUpperCase())}" />`;
+  const face = `<img class="comment-avatar${c.frame ? ` av-frame-${esc(String(c.frame).replace(/[^a-z-]/g, ''))}` : ''}" src="${avatarUrl(c)}" alt="${esc((c.display_name || 'Reader')[0].toUpperCase())}" onerror="this.src='/assets/chibi.png'" />`;
   return `
     <div class="comment-item ${c.pinned ? 'pinned' : ''}">
       <div class="comment-meta">
@@ -3492,7 +3494,7 @@ async function renderAccount() {
     <div class="page-title">Account settings</div>
     <div class="acct-wrap">
       <div class="acct-card acct-row">
-        ${wrapAvatarFrame(`<img class="avatar big${avatarFrameClass(u)}" id="acctAvatar" src="${avatarUrl(u)}" alt="" />`, u.frame)}
+        ${wrapAvatarFrame(`<img class="avatar big${avatarFrameClass(u)}" id="acctAvatar" src="${avatarUrl(u)}" alt="" onerror="this.src='/assets/chibi.png'" />`, u.frame)}
         <div style="flex:1;min-width:0">
           <div class="acct-name">${styledNameHtml(u, u.email)}${titleBadgeHtml(u.title)}</div>
           <div class="small">${esc(u.email)}${joined ? ` &middot; joined ${esc(joined)}` : ''}</div>
@@ -3772,7 +3774,7 @@ async function renderLeaderboard(active, fresh) {
         <div class="pop-item lb-item">
           <div class="pop-rank">${i + 1}</div>
           <span class="lb-av${(u.frame ? ` av-frame-${String(u.frame).replace(/[^a-z-]/g, '')}` : '')}">
-            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${av}" alt="" />
+            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${av}" alt="" onerror="this.src='/assets/chibi.png'" />
           </span>
           <div class="pop-info">
             <div class="pop-name">${styledNameHtml(u, 'Reader')}${titleBadgeHtml(u.title)}</div>
@@ -3840,7 +3842,7 @@ async function renderUserProfile(userId) {
       <div class="prof-card">
         <div class="prof-header">
           <span class="lb-av${(u.frame ? ` av-frame-${String(u.frame).replace(/[^a-z-]/g, '')}` : '')}">
-            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${avatarUrl(u)}" alt="" />
+            <img class="lb-cover" loading="lazy" referrerpolicy="no-referrer" src="${avatarUrl(u)}" alt="" onerror="this.src='/assets/chibi.png'" />
           </span>
           <div>
             <div style="display:flex;align-items:baseline;gap:8px"><div class="prof-name">${styledNameHtml(u, 'Reader')}${titleBadgeHtml(u.title)}</div>${followBtn}</div>
