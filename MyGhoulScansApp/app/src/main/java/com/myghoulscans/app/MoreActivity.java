@@ -43,7 +43,7 @@ public class MoreActivity extends Activity {
         name.setText(ApiClient.isSignedIn() ? "MyGhoulScans Reader" : "Guest");
         name.setTextColor(0xFFFFFFFF);
         name.setTextSize(18);
-        name.setStyle(android.graphics.Typeface.BOLD);
+        name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         txt.addView(name);
         TextView sub = new TextView(this);
         sub.setText(ApiClient.isSignedIn() ? "Your account is connected" : "Sign in to sync library & progress");
