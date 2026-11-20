@@ -61,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
         });
         tabs[2].setOnClickListener(v -> { webView.loadUrl(BASE + "#/library"); selectTab(2); });
         tabs[3].setOnClickListener(v -> { openDownloads(); selectTab(3); });
-        findViewById(R.id.topDownloads).setOnClickListener(v -> openDownloads());
 
         webView.loadUrl(BASE);
     }
