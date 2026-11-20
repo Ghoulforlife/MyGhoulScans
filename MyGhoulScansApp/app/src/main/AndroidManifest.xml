@@ -17,15 +17,19 @@
         android:theme="@style/Theme.MyGhoulScans"
         android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+            android:name=".HomeActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize">
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".MainActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".SearchActivity" android:exported="false" />
+        <activity android:name=".LibraryActivity" android:exported="false" />
+        <activity android:name=".ComicDetailActivity" android:exported="false" />
         <activity android:name=".DownloadsActivity" android:exported="false" />
         <activity android:name=".ChapterListActivity" android:exported="false" />
         <activity android:name=".ReaderActivity" android:exported="false" />

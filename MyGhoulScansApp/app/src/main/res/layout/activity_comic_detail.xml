@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/mgs_bg">
+
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
+        android:layout_height="52dp" android:background="@color/mgs_panel" android:gravity="center_vertical"
+        android:paddingStart="8dp" android:paddingEnd="8dp">
+        <Button android:id="@+id/detailBack" android:layout_width="wrap_content" android:layout_height="40dp"
+            android:text="←" android:textSize="20sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+        <TextView android:id="@+id/detailTopTitle" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:textColor="@color/white" android:textSize="16sp"
+            android:maxLines="1" android:ellipsize="end" android:layout_marginStart="6dp" />
+    </LinearLayout>
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:padding="16dp">
+
+            <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <ImageView android:id="@+id/detailCover" android:layout_width="110dp" android:layout_height="150dp"
+                    android:scaleType="centerCrop" android:contentDescription="Cover" />
+                <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:layout_marginStart="14dp">
+                    <TextView android:id="@+id/detailTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textColor="@color/white" android:textSize="19sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/detailSource" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textColor="@color/mgs_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
+                    <TextView android:id="@+id/detailCount" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textColor="@color/mgs_accent" android:textSize="13sp" android:layout_marginTop="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:id="@+id/detailDesc" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#FFBBBBBB" android:textSize="13sp" android:layout_marginTop="14dp" android:maxLines="5" />
+
+            <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="14dp">
+                <Button android:id="@+id/detailRead" android:layout_width="0dp" android:layout_weight="1"
+                    android:layout_height="44dp" android:text="Read first" android:textSize="13sp"
+                    android:textColor="@color/white" android:background="@color/mgs_accent" />
+                <Button android:id="@+id/detailDownloadAll" android:layout_width="0dp" android:layout_weight="1"
+                    android:layout_height="44dp" android:text="Download all" android:textSize="13sp"
+                    android:textColor="@color/white" android:background="@color/mgs_panel" />
+            </LinearLayout>
+
+            <TextView android:id="@+id/chapterHead" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Chapters" android:textColor="@color/white" android:textSize="18sp"
+                android:layout_marginTop="20dp" android:layout_marginBottom="8dp" />
+            <LinearLayout android:id="@+id/chapterList" android:orientation="vertical"
+                android:layout_width="match_parent" android:layout_height="wrap_content" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

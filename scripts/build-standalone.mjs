@@ -82,6 +82,7 @@ js = replaceOnce(js, `        body: JSON.stringify(signup ? { email, password, d
   `        body: JSON.stringify(signup ? { email, password, displayName: name } : { email, password }),
       });
       setToken(_authRes.token || null);
+      try { if (window.MGSAndroid && window.MGSAndroid.setToken) window.MGSAndroid.setToken(_authRes.token || ''); } catch (e) {}
       closeModal();`, 'auth token capture');
 
 // 4. Account-delete clears the token (logout clears it explicitly itself).

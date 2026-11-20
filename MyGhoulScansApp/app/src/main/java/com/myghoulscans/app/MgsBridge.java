@@ -12,10 +12,16 @@ import org.json.JSONObject;
 public class MgsBridge {
     private final Context ctx;
 
-    public MgsBridge(Context ctx) { this.ctx = ctx.getApplicationContext(); }
+    public MgsBridge(Context ctx) {
+        this.ctx = ctx.getApplicationContext();
+        ApiClient.init(this.ctx);
+    }
 
     @JavascriptInterface public String ping() { return "1"; }
     @JavascriptInterface public boolean isApp() { return true; }
+
+    @JavascriptInterface public void setToken(String t) { ApiClient.setToken(t); }
+    @JavascriptInterface public boolean isSignedIn() { return ApiClient.isSignedIn(); }
 
     private void start(JSONObject payload) {
         Intent i = new Intent(ctx, DownloadService.class);

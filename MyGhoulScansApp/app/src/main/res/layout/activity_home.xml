@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/mgs_bg">
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/mgs_panel"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="10dp">
+
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="Logo" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:text="MyGhoulScans"
+            android:textColor="@color/white"
+            android:textStyle="bold"
+            android:textSize="17sp" />
+
+        <Button
+            android:id="@+id/homeSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="⌕"
+            android:textSize="20sp"
+            android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="16dp">
+
+            <TextView
+                android:id="@+id/continueHead"
+                android:text="Continue reading"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:paddingStart="16dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="6dp" />
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none">
+                <LinearLayout android:id="@+id/continueRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+
+            <TextView android:text="Latest updates" android:textColor="@color/white"
+                android:textSize="18sp" android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/latestRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+
+            <TextView android:text="Most Recent Popular" android:textColor="@color/white"
+                android:textSize="18sp" android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/popularRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+
+            <TextView android:text="Top Picks for You" android:textColor="@color/white"
+                android:textSize="18sp" android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/picksRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+        </LinearLayout>
+    </ScrollView>
+
+    <include layout="@layout/bottom_nav" />
+</LinearLayout>

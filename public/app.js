@@ -31,6 +31,10 @@ const MGSApp = (() => {
   try { a = window.MGSAndroid || null; } catch {}
   const isApp = !!(a && typeof a.isApp === 'function' && a.isApp());
   const token = () => { try { return localStorage.getItem('mgs_token') || ''; } catch { return ''; } };
+  if (isApp && a.setToken) { try { a.setToken(token()); } catch {} }
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'mgs_token' && isApp && a.setToken) { try { a.setToken(token()); } catch {} }
+  });
   const download = (mangaId, title, cover, chapters) => {
     if (!isApp) { toast('Downloads are available in the MyGhoulScans Android app'); return false; }
     if (!currentUser) { toast('Sign in to download chapters'); return false; }
@@ -323,6 +327,7 @@ async function doLogout() {
   currentUser = null;
   // Static build sessions live in localStorage (setToken only exists there).
   if (typeof setToken === 'function') { try { setToken(null); } catch {} }
+  if (MGSApp.isApp && MGSApp.bridge && MGSApp.bridge.setToken) { try { MGSApp.bridge.setToken(''); } catch {} }
   try {
     localStorage.removeItem(BM_KEY);
     localStorage.removeItem(LOCAL_PROG_KEY);
