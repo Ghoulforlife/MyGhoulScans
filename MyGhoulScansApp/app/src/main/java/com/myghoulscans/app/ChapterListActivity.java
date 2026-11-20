@@ -17,6 +17,7 @@ import org.json.JSONObject;
 public class ChapterListActivity extends Activity {
     private String mangaId, title;
     private LinearLayout list;
+    private TextView sub;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,15 +43,13 @@ public class ChapterListActivity extends Activity {
         head.setPadding(0, 0, 0, 6);
         root.addView(head);
 
-        TextView sub = new TextView(this);
-        sub.setId(0x7f010002);
+        sub = new TextView(this);
         sub.setTextColor(0xFF979BA8);
         sub.setTextSize(13);
         sub.setPadding(0, 0, 0, 16);
         root.addView(sub);
 
         list = new LinearLayout(this);
-        list.setId(0x7f010003);
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
 
@@ -89,7 +88,7 @@ public class ChapterListActivity extends Activity {
                 if (mangaId.equals(t.optString("mangaId", ""))) chapters = t.optJSONArray("chapters");
             } catch (Exception ignored) {}
         }
-        TextView sub = findViewById(0x7f010002);
+        if (sub == null) sub = new TextView(this);
         if (chapters == null) chapters = new JSONArray();
         if (sub != null) sub.setText(chapters.length() + " chapter" + (chapters.length() == 1 ? "" : "s") + " saved · tap to read");
 

@@ -76,7 +76,7 @@ public class HomeActivity extends AppCompatActivity {
         LinearLayout row = findViewById(id);
         if (row == null || arr == null) return;
         row.removeAllViews();
-        for (int i = 0; i < Math.min(12, arr.length()); i++) {
+        for (int i = 0; i < Math.min(8, arr.length()); i++) {
             try {
                 JSONObject o = arr.getJSONObject(i);
                 String mid = o.optString("id", "");

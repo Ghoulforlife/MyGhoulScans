@@ -72,7 +72,8 @@ public class SearchActivity extends AppCompatActivity {
 
         ImageView img = new ImageView(this);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Glide.with(this).load(cover).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
+        Glide.with(this).load(cover).override(160, 220)
+                .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
         LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(Views.dp(this, 66), Views.dp(this, 88));
         img.setLayoutParams(ip);
         row.addView(img);

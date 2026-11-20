@@ -25,7 +25,8 @@ final class Views {
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         img.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(a, 168)));
-        Glide.with(a).load(coverUrl).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
+        Glide.with(a).load(coverUrl).override(260, 340)
+                .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
         card.addView(img);
 
         TextView t = new TextView(a);

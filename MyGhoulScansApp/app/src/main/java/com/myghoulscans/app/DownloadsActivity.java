@@ -19,6 +19,7 @@ import java.io.File;
 
 /** Downloads home: one card per comic (cover + name + chapter count). */
 public class DownloadsActivity extends Activity {
+    private LinearLayout cards;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,8 +56,7 @@ public class DownloadsActivity extends Activity {
         info.setPadding(0, 0, 0, 18);
         root.addView(info);
 
-        LinearLayout cards = new LinearLayout(this);
-        cards.setId(0x7f010001);
+        cards = new LinearLayout(this);
         cards.setOrientation(LinearLayout.VERTICAL);
         root.addView(cards);
 
@@ -74,7 +74,6 @@ public class DownloadsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        LinearLayout cards = findViewById(0x7f010001);
         if (cards == null) return;
         cards.removeAllViews();
         JSONArray titles = DownloadStore.listTitles(this);
