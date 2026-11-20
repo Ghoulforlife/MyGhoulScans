@@ -23,8 +23,10 @@ public class HomeActivity extends AppCompatActivity {
     private JSONArray latest, popular, picks, recent, ongoing, romance, continueReading;
     private LinearLayout infiniteGrid;
     private TextView loadingMore;
+    private static final int MAX_ROWS = 30;
     private int page = 1;
     private boolean loading;
+    private long lastLoadAt = 0;
     private final java.util.HashSet<String> seen = new java.util.HashSet<>();
 
     @Override
@@ -99,7 +101,10 @@ public class HomeActivity extends AppCompatActivity {
 
     // Infinite feed: each page pulls 20 titles from the next genre in rotation.
     private void loadMore() {
-        if (loading || infiniteGrid == null || infiniteGrid.getChildCount() >= 100) return;
+        long now = System.currentTimeMillis();
+        if (loading || infiniteGrid == null || infiniteGrid.getChildCount() >= MAX_ROWS
+                || now - lastLoadAt < 1800) return;
+        lastLoadAt = now;
         loading = true;
         if (loadingMore != null) loadingMore.setVisibility(View.VISIBLE);
         final int myPage = page++;
@@ -118,7 +123,7 @@ public class HomeActivity extends AppCompatActivity {
                 if (arr == null) return;
                 LinearLayout row = Views.row(HomeActivity.this);
                 int placed = 0;
-                for (int i = 0; i < arr.length() && infiniteGrid.getChildCount() < 100; i++) {
+                for (int i = 0; i < Math.min(10, arr.length()) && infiniteGrid.getChildCount() < MAX_ROWS; i++) {
                     try {
                         JSONObject o = arr.getJSONObject(i);
                         String mid = o.optString("id", "");
@@ -135,8 +140,8 @@ public class HomeActivity extends AppCompatActivity {
                     } catch (Exception ignored) {}
                 }
                 if (placed > 0) infiniteGrid.addView(row);
-                if (infiniteGrid.getChildCount() >= 100 && loadingMore != null)
-                    loadingMore.setText("You're all caught up — that's 200 comics!");
+                if (infiniteGrid.getChildCount() >= MAX_ROWS && loadingMore != null)
+                    loadingMore.setText("You're all caught up — 60 comics loaded!");
             }
         }.execute();
     }
