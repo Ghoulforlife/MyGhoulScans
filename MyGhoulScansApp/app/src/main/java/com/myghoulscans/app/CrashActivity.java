@@ -19,6 +19,7 @@ public class CrashActivity extends Activity {
         super.onCreate(savedInstanceState);
         String error = getIntent().getStringExtra("error");
         if (error == null || error.isEmpty()) error = "Unknown crash";
+        final String err = error;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(16, 16, 16, 16);
@@ -45,7 +46,7 @@ public class CrashActivity extends Activity {
         copy.setText("Copy error");
         copy.setOnClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("crash", error));
+            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("crash", err));
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show();
         });
         root.addView(copy);
