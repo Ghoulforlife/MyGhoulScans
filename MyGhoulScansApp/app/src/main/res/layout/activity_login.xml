@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/mgs_bg" android:fillViewport="true">
+
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:padding="24dp">
+
+        <Button android:id="@+id/loginBack" android:layout_width="wrap_content" android:layout_height="40dp"
+            android:text="←" android:textSize="20sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <ImageView android:layout_width="64dp" android:layout_height="64dp"
+            android:src="@mipmap/ic_launcher" android:contentDescription="Logo"
+            android:layout_marginTop="16dp" android:layout_marginBottom="10dp" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="MyGhoulScans" android:textColor="@color/white" android:textSize="24sp"
+            android:textStyle="bold" />
+        <TextView android:id="@+id/loginSubtitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Log in to sync your library and progress" android:textColor="@color/mgs_muted"
+            android:textSize="13sp" android:layout_marginTop="4dp" android:layout_marginBottom="20dp" />
+
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/tabLogin" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="44dp" android:text="Log in" android:textSize="14sp"
+                android:textColor="@color/white" android:background="@drawable/mgs_accent_button" />
+            <Button android:id="@+id/tabSignup" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="44dp" android:text="Sign up" android:textSize="14sp"
+                android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
+        </LinearLayout>
+
+        <EditText android:id="@+id/loginUsername" android:layout_width="match_parent" android:layout_height="48dp"
+            android:hint="Username (optional)" android:textColor="@color/white" android:textColorHint="@color/mgs_muted"
+            android:background="@drawable/mgs_card" android:paddingStart="14dp" android:visibility="gone"
+            android:layout_marginTop="18dp" />
+        <EditText android:id="@+id/loginEmail" android:layout_width="match_parent" android:layout_height="48dp"
+            android:hint="Email" android:inputType="textEmailAddress" android:textColor="@color/white"
+            android:textColorHint="@color/mgs_muted" android:background="@drawable/mgs_card"
+            android:paddingStart="14dp" android:layout_marginTop="14dp" />
+        <EditText android:id="@+id/loginPassword" android:layout_width="match_parent" android:layout_height="48dp"
+            android:hint="Password (6+ characters)" android:inputType="textPassword" android:textColor="@color/white"
+            android:textColorHint="@color/mgs_muted" android:background="@drawable/mgs_card"
+            android:paddingStart="14dp" android:layout_marginTop="10dp" />
+
+        <Button android:id="@+id/loginSubmit" android:layout_width="match_parent" android:layout_height="50dp"
+            android:text="Log in" android:textSize="15sp" android:textColor="@color/white"
+            android:background="@drawable/mgs_accent_button" android:layout_marginTop="22dp" />
+        <TextView android:id="@+id/loginError" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="@color/mgs_accent" android:textSize="13sp" android:visibility="gone"
+            android:layout_marginTop="10dp" />
+    </LinearLayout>
+</ScrollView>

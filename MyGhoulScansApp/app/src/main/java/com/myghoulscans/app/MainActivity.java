@@ -50,7 +50,14 @@ public class MainActivity extends AppCompatActivity {
                 try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
                 return true;
             }
-            @Override public void onPageFinished(WebView v, String url) { webView.evaluateJavascript(APP_CSS, null); }
+            @Override public void onPageFinished(WebView v, String url) {
+                webView.evaluateJavascript(APP_CSS, null);
+                String t = ApiClient.token();
+                if (!t.isEmpty()) {
+                    webView.evaluateJavascript("(function(){try{localStorage.setItem('mgs_token','" + t
+                            + "');if(typeof refreshAuth==='function')refreshAuth();}catch(e){}})()", null);
+                }
+            }
         });
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new MgsBridge(this), "MGSAndroid");

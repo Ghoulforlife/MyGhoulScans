@@ -29,11 +29,7 @@ public class LibraryActivity extends AppCompatActivity {
         if (!ApiClient.isSignedIn()) {
             Button signIn = new Button(this);
             signIn.setText("Sign in to see your library");
-            signIn.setOnClickListener(v -> {
-                Intent i = new Intent(this, MainActivity.class);
-                i.putExtra("url", "https://ghoulforlife.github.io/MyGhoulScans/#/account");
-                startActivity(i);
-            });
+            signIn.setOnClickListener(v -> startActivity(new Intent(this, LoginActivity.class)));
             list.addView(signIn);
             return;
         }

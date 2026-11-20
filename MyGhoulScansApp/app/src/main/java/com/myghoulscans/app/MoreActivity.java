@@ -63,7 +63,10 @@ public class MoreActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ap.topMargin = 18;
         auth.setLayoutParams(ap);
-        auth.setOnClickListener(v -> web("#/account"));
+        auth.setOnClickListener(v -> {
+            if (ApiClient.isSignedIn()) web("#/account");
+            else startActivity(new Intent(this, LoginActivity.class));
+        });
         card.addView(auth);
         list.addView(card, margins(0, 0, 0, 20));
 
@@ -71,6 +74,13 @@ public class MoreActivity extends Activity {
         row("👤", "Account settings", () -> web("#/account"));
         row("☆", "My Library", () -> go(LibraryActivity.class));
         row("↓", "Downloads", () -> go(DownloadsActivity.class));
+        if (ApiClient.isSignedIn()) {
+            row("↪", "Log out", () -> {
+                ApiClient.setToken("");
+                Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show();
+                recreate();
+            });
+        }
 
         section("DISCOVER");
         row("🏆", "Leaderboard", () -> web("#/leaderboard"));
