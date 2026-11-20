@@ -11,10 +11,11 @@ final class Nav {
     private Nav() {}
 
     private static final int[] IDS = {
-            R.id.navHome, R.id.navSearch, R.id.navLibrary, R.id.navDownloads
+            R.id.navHome, R.id.navSearch, R.id.navLibrary, R.id.navDownloads, R.id.navMore
     };
     private static final Class<?>[] TARGETS = {
-            HomeActivity.class, SearchActivity.class, LibraryActivity.class, DownloadsActivity.class
+            HomeActivity.class, SearchActivity.class, LibraryActivity.class, DownloadsActivity.class,
+            MoreActivity.class
     };
 
     static void attach(final Activity a, int active) {

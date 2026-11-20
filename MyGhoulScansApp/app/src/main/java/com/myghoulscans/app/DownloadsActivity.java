@@ -25,6 +25,8 @@ public class DownloadsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setTitle("Downloads");
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -32,7 +34,11 @@ public class DownloadsActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         scroll.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        setContentView(scroll);
+        outer.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        outer.addView(getLayoutInflater().inflate(R.layout.bottom_nav, outer, false));
+        setContentView(outer);
+        Nav.attach(this, 3);
 
         ImageView logo = new ImageView(this);
         logo.setImageResource(R.mipmap.ic_launcher);
@@ -61,9 +67,14 @@ public class DownloadsActivity extends Activity {
         root.addView(cards);
 
         Button back = new Button(this);
-        back.setText("← Back to website");
+        back.setText("← Home");
         back.setTextSize(15);
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> {
+            Intent i = new Intent(this, HomeActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(i);
+            finish();
+        });
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bp.topMargin = 24;

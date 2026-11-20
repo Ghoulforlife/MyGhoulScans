@@ -23,4 +23,8 @@
         android:layout_weight="1" android:text="↓ Downloads" android:textSize="10sp"
         android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
         android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
+    <Button android:id="@+id/navMore" android:layout_width="0dp" android:layout_height="match_parent"
+        android:layout_weight="1" android:text="⋯ More" android:textSize="10sp"
+        android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
+        android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
 </LinearLayout>

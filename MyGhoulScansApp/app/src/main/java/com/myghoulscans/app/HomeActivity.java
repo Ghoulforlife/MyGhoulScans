@@ -13,7 +13,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class HomeActivity extends AppCompatActivity {
-    private JSONArray latest, popular, picks, continueReading;
+    private JSONArray latest, popular, picks, recent, ongoing, romance, continueReading;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +36,12 @@ public class HomeActivity extends AppCompatActivity {
                 if (d != null) popular = d.optJSONArray("trending");
             } catch (Exception ignored) {}
             try { picks = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=action&page=1&enrich=1")).optJSONArray("data"); }
+            catch (Exception ignored) {}
+            try { recent = new JSONObject(ApiClient.get("/comick/latest?source=flamecomics&enrich=1")).optJSONArray("data"); }
+            catch (Exception ignored) {}
+            try { ongoing = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=fantasy&page=1&enrich=1")).optJSONArray("data"); }
+            catch (Exception ignored) {}
+            try { romance = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=romance&page=1&enrich=1")).optJSONArray("data"); }
             catch (Exception ignored) {}
             if (ApiClient.isSignedIn()) {
                 continueReading = new JSONArray();
@@ -67,6 +73,9 @@ public class HomeActivity extends AppCompatActivity {
             fill(R.id.latestRow, latest);
             fill(R.id.popularRow, popular);
             fill(R.id.picksRow, picks);
+            fill(R.id.recentRow, recent);
+            fill(R.id.ongoingRow, ongoing);
+            fill(R.id.romanceRow, romance);
             if (continueReading == null || continueReading.length() == 0)
                 findViewById(R.id.continueHead).setVisibility(android.view.View.GONE);
         }
@@ -76,7 +85,7 @@ public class HomeActivity extends AppCompatActivity {
         LinearLayout row = findViewById(id);
         if (row == null || arr == null) return;
         row.removeAllViews();
-        for (int i = 0; i < Math.min(8, arr.length()); i++) {
+        for (int i = 0; i < Math.min(12, arr.length()); i++) {
             try {
                 JSONObject o = arr.getJSONObject(i);
                 String mid = o.optString("id", "");

@@ -27,6 +27,8 @@ public class ChapterListActivity extends Activity {
         if (mangaId == null) { finish(); return; }
         setTitle(title);
 
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -34,7 +36,11 @@ public class ChapterListActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         scroll.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        setContentView(scroll);
+        outer.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        outer.addView(getLayoutInflater().inflate(R.layout.bottom_nav, outer, false));
+        setContentView(outer);
+        Nav.attach(this, 3);
 
         TextView head = new TextView(this);
         head.setText(title);
@@ -70,7 +76,12 @@ public class ChapterListActivity extends Activity {
         Button back = new Button(this);
         back.setText("← Downloads");
         back.setTextSize(15);
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> {
+            Intent i = new Intent(this, DownloadsActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(i);
+            finish();
+        });
         root.addView(back, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }

@@ -96,6 +96,33 @@
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:paddingStart="6dp" android:paddingEnd="6dp" />
             </HorizontalScrollView>
+
+            <TextView android:text="Recently Added" android:textColor="@color/white"
+                android:textSize="18sp" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/recentRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+
+            <TextView android:text="Popular Ongoing" android:textColor="@color/white"
+                android:textSize="18sp" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/ongoingRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
+
+            <TextView android:text="Romance Picks" android:textColor="@color/white"
+                android:textSize="18sp" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingTop="14dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <LinearLayout android:id="@+id/romanceRow" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </HorizontalScrollView>
         </LinearLayout>
     </ScrollView>
 
