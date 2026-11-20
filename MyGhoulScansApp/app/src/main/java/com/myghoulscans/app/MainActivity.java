@@ -20,8 +20,22 @@ import androidx.core.content.ContextCompat;
 public class MainActivity extends AppCompatActivity {
 
     private static final String BASE = "https://ghoulforlife.github.io/MyGhoulScans/";
+    // APK-only theme: hide the site's duplicate nav (the source of the nav bug)
+    // and give the content a rounder, more app-like look. The native bottom bar
+    // is the only navigation the user sees.
+    private static final String APP_CSS =
+        "(function(){var o=document.getElementById('mgs-app-style');if(o)o.remove();"
+        + "var s=document.createElement('style');s.id='mgs-app-style';"
+        + "s.textContent='#nav,#mobileMenu,#menuBtn,.discord-banner{display:none!important}'"
+        + "+'header{padding:10px 12px!important}'"
+        + "+'#searchbox input{border-radius:16px!important;font-size:15px!important}'"
+        + "+'.title-hero,.page-title,.card,.hrow>*{border-radius:14px!important}'"
+        + "+'.btn{border-radius:12px!important;min-height:40px!important}'"
+        + "+'body{padding-bottom:6px!important}';"
+        + "document.head.appendChild(s);})()";
+
     private WebView webView;
-    private View topBar, bottomBar;
+    private View bottomBar;
     private Button[] tabs;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -35,7 +49,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webView);
-        topBar = findViewById(R.id.topBar);
         bottomBar = findViewById(R.id.bottomBar);
         tabs = new Button[]{
                 findViewById(R.id.navHome), findViewById(R.id.navSearch),
@@ -88,10 +101,9 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            webView.evaluateJavascript(APP_CSS, null);
             boolean reader = url.contains("/reader/") || url.contains("#/reader/");
-            int vis = reader ? View.GONE : View.VISIBLE;
-            topBar.setVisibility(vis);
-            bottomBar.setVisibility(vis);
+            bottomBar.setVisibility(reader ? View.GONE : View.VISIBLE);
         }
     }
 

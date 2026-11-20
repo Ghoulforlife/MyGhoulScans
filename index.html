@@ -1653,6 +1653,57 @@ const MGSApp = (() => {
   return { isApp, bridge: a, token, download };
 })();
 
+// Reader download sheet: this chapter / all chapters / pick specific ones.
+function openDownloadSheet(mangaId, title, cover, chapters, currentIdx) {
+  if (!MGSApp.isApp) { toast('Downloads are available in the MyGhoulScans Android app'); return; }
+  if (!currentUser) { toast('Sign in to download chapters'); return; }
+  const all = (chapters || []).slice().sort((a, b) => (parseFloat(a.num) || 0) - (parseFloat(b.num) || 0));
+  if (!all.length) { toast('No chapters to download'); return; }
+  const old = document.getElementById('mgsDlSheet');
+  if (old) old.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'mgsDlSheet';
+  sheet.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:99999;display:flex;align-items:flex-end';
+  sheet.innerHTML = `
+    <div style="width:100%;max-height:82vh;overflow:auto;background:#15151b;border-radius:18px 18px 0 0;padding:18px 16px 24px;color:#edf0f4;font-family:inherit">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <strong style="font-size:17px">Download chapters</strong>
+        <button id="mgsDlClose" style="background:none;border:0;color:#979ba8;font-size:22px;line-height:1">&times;</button>
+      </div>
+      <div style="font-size:12px;color:#979ba8;margin:4px 0 14px">${esc(title || '')} · ${all.length} chapters available</div>
+      <button id="mgsDlOne" style="width:100%;padding:13px;margin-bottom:8px;border:0;border-radius:12px;background:#e11d2e;color:#fff;font-size:15px;font-weight:600">Download this chapter (Ch. ${esc(all[currentIdx]?.num || '?')})</button>
+      <button id="mgsDlAll" style="width:100%;padding:13px;margin-bottom:8px;border:1px solid #333; border-radius:12px;background:#1c1c24;color:#fff;font-size:15px">Download all ${all.length} chapters</button>
+      <button id="mgsDlPick" style="width:100%;padding:13px;margin-bottom:10px;border:1px solid #333;border-radius:12px;background:#1c1c24;color:#fff;font-size:15px">Choose chapters…</button>
+      <div id="mgsDlList" style="display:none;max-height:42vh;overflow:auto;border:1px solid #26262f;border-radius:12px;padding:8px;margin-bottom:10px">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button id="mgsDlSelAll" style="flex:1;padding:8px;border:1px solid #333;border-radius:9px;background:#26262f;color:#fff;font-size:13px">Select all</button>
+          <button id="mgsDlNone" style="flex:1;padding:8px;border:1px solid #333;border-radius:9px;background:#26262f;color:#fff;font-size:13px">Clear</button>
+        </div>
+        ${all.map((c, i) => `<label style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid #23232b;font-size:14px"><input type="checkbox" class="mgsDlChk" value="${i}" ${i === currentIdx ? 'checked' : ''}/> Ch. ${esc(c.num || '?')}</label>`).join('')}
+        <button id="mgsDlSelected" style="width:100%;padding:12px;margin-top:10px;border:0;border-radius:11px;background:#e11d2e;color:#fff;font-size:15px;font-weight:600">Download selected</button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet.querySelector('#mgsDlClose').onclick = close;
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
+  const payload = (list) => MGSApp.download(mangaId, title, cover, list.map((c) => ({ url: c.id || c.url, num: c.num, label: 'Ch. ' + (c.num || '?') })));
+  sheet.querySelector('#mgsDlOne').onclick = () => { payload([all[currentIdx] || all[0]]); close(); };
+  sheet.querySelector('#mgsDlAll').onclick = () => { payload(all); close(); };
+  sheet.querySelector('#mgsDlPick').onclick = () => {
+    const box = sheet.querySelector('#mgsDlList');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  };
+  sheet.querySelector('#mgsDlSelAll').onclick = () => sheet.querySelectorAll('.mgsDlChk').forEach((b) => { b.checked = true; });
+  sheet.querySelector('#mgsDlNone').onclick = () => sheet.querySelectorAll('.mgsDlChk').forEach((b) => { b.checked = false; });
+  sheet.querySelector('#mgsDlSelected').onclick = () => {
+    const picked = [...sheet.querySelectorAll('.mgsDlChk:checked')].map((b) => all[+b.value]);
+    if (!picked.length) { toast('Select at least one chapter'); return; }
+    payload(picked);
+    close();
+  };
+}
+
 function toast(msg) {
   let t = $('.toast');
   if (!t) {
@@ -3903,7 +3954,7 @@ async function renderReader(mangaId, chapterId, startPage) {
 
     $('#rDownload')?.addEventListener('click', () => {
       hideRMenu();
-      MGSApp.download(mangaId, mangaTitle, coverSrc, [{ url: cid, num: curCh.num || '', label: chLabel(curCh) }]);
+      openDownloadSheet(mangaId, mangaTitle, coverSrc, chapters, idx);
     });
 
     // Alt-source switcher (reader-only): same comic on other sources.

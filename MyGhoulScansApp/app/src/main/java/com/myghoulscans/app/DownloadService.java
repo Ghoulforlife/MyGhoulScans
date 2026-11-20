@@ -91,6 +91,10 @@ public class DownloadService extends Service {
     }
 
     private void saveImage(String url, File dest) throws Exception {
+        if (url.startsWith("/")) {
+            String u = url.startsWith("/api/") ? url.substring(4) : url;
+            url = DownloadStore.WORKER + u;
+        }
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
