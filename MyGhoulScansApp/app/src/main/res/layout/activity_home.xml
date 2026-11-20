@@ -40,7 +40,8 @@
             android:background="?android:attr/selectableItemBackground" />
     </LinearLayout>
 
-    <ScrollView
+    <com.myghoulscans.app.EndlessScrollView
+        android:id="@+id/homeScroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
@@ -123,8 +124,19 @@
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:paddingStart="6dp" android:paddingEnd="6dp" />
             </HorizontalScrollView>
+
+            <TextView android:text="For You · scroll for more" android:textColor="@color/white"
+                android:textSize="18sp" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingTop="18dp" android:paddingBottom="6dp" />
+            <LinearLayout android:id="@+id/infiniteGrid" android:orientation="vertical"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="10dp" android:paddingEnd="10dp" />
+            <TextView android:id="@+id/loadingMore" android:text="Loading more comics…"
+                android:textColor="@color/mgs_muted" android:textSize="12sp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:padding="14dp" />
         </LinearLayout>
-    </ScrollView>
+    </com.myghoulscans.app.EndlessScrollView>
 
     <include layout="@layout/bottom_nav" />
 </LinearLayout>
