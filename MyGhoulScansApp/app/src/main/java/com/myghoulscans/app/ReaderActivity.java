@@ -52,6 +52,8 @@ public class ReaderActivity extends Activity {
         WebView web = new WebView(this);
         WebSettings s = web.getSettings();
         s.setAllowFileAccess(true);
+        s.setAllowFileAccessFromFileURLs(true);
+        s.setAllowUniversalAccessFromFileURLs(true);
         s.setJavaScriptEnabled(false);
         s.setSupportZoom(true);
         s.setBuiltInZoomControls(true);
