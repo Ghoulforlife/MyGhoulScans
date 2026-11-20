@@ -3396,7 +3396,9 @@ async function renderTitle(mangaId) {
       </div>`;
 
     $('#downloadAllBtn')?.addEventListener('click', () => {
-      const list = chapters.map((c) => ({ url: c.url, num: c.number ?? '', label: 'Ch. ' + (c.number ?? '?') }));
+      const list = chapters.slice()
+        .sort((a, b) => (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0))
+        .map((c) => ({ url: c.url, num: c.number ?? '', label: 'Ch. ' + (c.number ?? '?') }));
       MGSApp.download(mangaId, titleOf(manga), manga.cover ? `/api/img?u=${encodeURIComponent(manga.cover)}` : '', list);
     });
 

@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /** Local storage helpers for downloaded chapters. All state lives under filesDir/downloads. */
@@ -94,6 +96,7 @@ final class DownloadStore {
             try {
                 JSONObject t = new JSONObject(meta);
                 JSONArray chapters = new JSONArray();
+                List<JSONObject> sorted = new ArrayList<>();
                 File[] cds = dir.listFiles();
                 if (cds != null) {
                     for (File cd : cds) {
@@ -102,9 +105,11 @@ final class DownloadStore {
                         if (cm == null) continue;
                         JSONObject ch = new JSONObject(cm);
                         ch.put("bytes", size(cd));
-                        chapters.put(ch);
+                        sorted.add(ch);
                     }
                 }
+                Collections.sort(sorted, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
+                for (JSONObject ch : sorted) chapters.put(ch);
                 t.put("chapters", chapters);
                 t.put("bytes", size(dir));
                 out.put(t);

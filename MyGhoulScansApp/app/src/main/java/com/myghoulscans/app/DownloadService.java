@@ -20,6 +20,10 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 /** Downloads chapter images from the site's worker API into local storage. */
 public class DownloadService extends Service {
@@ -102,6 +106,11 @@ public class DownloadService extends Service {
         out.close(); in.close(); c.disconnect();
     }
 
+    private static double chapterNum(JSONObject c) {
+        try { return Double.parseDouble(c.optString("num", "")); }
+        catch (Exception e) { return 0; }
+    }
+
     private void run(String payload) throws Exception {
         JSONObject p = new JSONObject(payload);
         String mangaId = p.optString("mangaId", "");
@@ -123,12 +132,20 @@ public class DownloadService extends Service {
         titleMeta.put("title", title);
         titleMeta.put("coverUrl", p.optString("coverUrl", ""));
         DownloadStore.write(DownloadStore.titleMeta(this, mangaId), titleMeta.toString());
+        String cover = p.optString("coverUrl", "");
+        if (!cover.isEmpty()) {
+            try { saveImage(cover, new File(DownloadStore.titleDir(this, mangaId), "cover.jpg")); }
+            catch (Exception ignored) {}
+        }
 
-        JSONArray chapters = p.optJSONArray("chapters");
-        if (chapters == null || chapters.length() == 0) throw new Exception("No chapters selected");
-        int total = chapters.length();
+        JSONArray chaptersIn = p.optJSONArray("chapters");
+        if (chaptersIn == null || chaptersIn.length() == 0) throw new Exception("No chapters selected");
+        List<JSONObject> chapters = new ArrayList<>();
+        for (int i = 0; i < chaptersIn.length(); i++) chapters.add(chaptersIn.getJSONObject(i));
+        Collections.sort(chapters, (a, b) -> Double.compare(chapterNum(a), chapterNum(b)));
+        int total = chapters.size();
         for (int i = 0; i < total; i++) {
-            JSONObject ch = chapters.getJSONObject(i);
+            JSONObject ch = chapters.get(i);
             String curl = ch.optString("url", "");
             if (curl.isEmpty()) continue;
             String label = ch.optString("label", "Ch. " + ch.optString("num", "?"));
