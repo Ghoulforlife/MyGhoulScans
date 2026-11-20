@@ -8,15 +8,19 @@
     android:baselineAligned="false">
 
     <Button android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_weight="1" android:text="⌂ Home" android:textSize="12sp"
+        android:layout_weight="1" android:text="⌂ Home" android:textSize="10sp"
+        android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
         android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
     <Button android:id="@+id/navSearch" android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_weight="1" android:text="⌕ Search" android:textSize="12sp"
+        android:layout_weight="1" android:text="⌕ Search" android:textSize="10sp"
+        android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
         android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
     <Button android:id="@+id/navLibrary" android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_weight="1" android:text="☆ Library" android:textSize="12sp"
+        android:layout_weight="1" android:text="☆ Library" android:textSize="10sp"
+        android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
         android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
     <Button android:id="@+id/navDownloads" android:layout_width="0dp" android:layout_height="match_parent"
-        android:layout_weight="1" android:text="↓ Downloads" android:textSize="12sp"
+        android:layout_weight="1" android:text="↓ Downloads" android:textSize="10sp"
+        android:singleLine="true" android:minWidth="0dp" android:paddingStart="0dp" android:paddingEnd="0dp"
         android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
 </LinearLayout>
