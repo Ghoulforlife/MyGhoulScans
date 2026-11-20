@@ -44,7 +44,9 @@ public class LibraryActivity extends AppCompatActivity {
 
     private class LoadTask extends AsyncTask<Void, Void, JSONArray> {
         @Override protected JSONArray doInBackground(Void... unused) {
-            JSONArray ids = new JSONObject(new ApiClientGet().get()).optJSONArray("mangaIds");
+            JSONArray ids = null;
+            try { ids = new JSONObject(ApiClient.get("/library")).optJSONArray("mangaIds"); }
+            catch (Exception ignored) {}
             JSONArray out = new JSONArray();
             if (ids == null) return out;
             for (int i = 0; i < ids.length(); i++) {
@@ -76,10 +78,6 @@ public class LibraryActivity extends AppCompatActivity {
                 try { list.addView(row(arr.getJSONObject(i))); } catch (Exception ignored) {}
             }
         }
-    }
-
-    private static class ApiClientGet {
-        String get() throws Exception { return ApiClient.get("/library"); }
     }
 
     private LinearLayout row(JSONObject o) {

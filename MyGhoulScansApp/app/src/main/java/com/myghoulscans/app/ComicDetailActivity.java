@@ -72,11 +72,11 @@ public class ComicDetailActivity extends AppCompatActivity {
             for (int i = 0; i < chapters.length(); i++) {
                 try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
             }
-            findViewById(R.id.detailRead).setOnClickListener(v -> {
-                if (chapters.length() == 0) { Toast.makeText(this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
+            findViewById(R.id.detailRead).setOnClickListener(click -> {
+                if (chapters.length() == 0) { Toast.makeText(ComicDetailActivity.this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
                 try { openOnline(chapters.getJSONObject(0).optString("url", "")); } catch (Exception ignored) {}
             });
-            findViewById(R.id.detailDownloadAll).setOnClickListener(v -> downloadAll());
+            findViewById(R.id.detailDownloadAll).setOnClickListener(click -> downloadAll());
         }
     }
 
