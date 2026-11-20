@@ -6,4 +6,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="mgs_bg">#FF0E0E12</color>
+    <color name="mgs_panel">#FF15151B</color>
+    <color name="mgs_accent">#FFE11D2E</color>
+    <color name="mgs_muted">#FF979BA8</color>
 </resources>

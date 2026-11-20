@@ -108,8 +108,8 @@ js = replaceOnce(js, `<label class="btn ghost" for="acctFile">Change picture</la
 js = replaceOnce(js, `<button class="btn ghost" id="acctPicStatic" hidden>Change picture</button>`,
   `<button class="btn ghost" id="acctPicStatic">Change picture</button>`, 'static avatar unhide');
 
-// 8. Generated avatar via worker (not same-origin /api on Pages).
-js = replaceOnce(js, 'return `/api/avatar/${u.id}.svg`;', 'return `${API_BASE}/auth/avatar/${u.id}.svg`;', 'avatar url');
+// 8. Custom avatar uploads live on the worker, not on the Pages origin.
+js = replaceOnce(js, "location.origin + '/uploads/' + String(u.avatar)", "API_BASE + '/uploads/' + String(u.avatar)", 'avatar uploads url');
 
 // 9. Static has no same-origin /api/img — route covers + chapter pages via
 // the worker proxy (it also defeats source hotlink protection with Referer).

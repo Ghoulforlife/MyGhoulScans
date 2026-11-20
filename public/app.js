@@ -25,6 +25,28 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ---------- Android app bridge (offline downloads) ----------
+const MGSApp = (() => {
+  let a = null;
+  try { a = window.MGSAndroid || null; } catch {}
+  const isApp = !!(a && typeof a.isApp === 'function' && a.isApp());
+  const token = () => { try { return localStorage.getItem('mgs_token') || ''; } catch { return ''; } };
+  const download = (mangaId, title, cover, chapters) => {
+    if (!isApp) { toast('Downloads are available in the MyGhoulScans Android app'); return false; }
+    if (!currentUser) { toast('Sign in to download chapters'); return false; }
+    if (!a.downloadMany) { toast('Update the app to enable downloads'); return false; }
+    try {
+      a.downloadMany(JSON.stringify({
+        mangaId: String(mangaId), title: title || 'Untitled', coverUrl: cover || '',
+        token: token(), chapters: chapters || []
+      }));
+      toast('Download started — check Downloads');
+      return true;
+    } catch (e) { toast('Could not start download'); return false; }
+  };
+  return { isApp, bridge: a, token, download };
+})();
+
 function toast(msg) {
   let t = $('.toast');
   if (!t) {
@@ -1739,6 +1761,7 @@ async function renderTitle(mangaId) {
             ${progress ? `<button class="btn primary" id="resumeBtn">Continue: Ch. ${esc(progress.chapter_label || '?')} &#183; p.${progress.page + 1}</button>` : ''}
             ${!progress && chapters.length ? `<button class="btn primary" id="startBtn">Read Chapter ${esc(firstChapterLabel(chapters))}</button>` : ''}
             <button class="btn ${followed ? 'primary' : ''}" id="followBtn">${currentUser ? (followed ? 'In Library' : 'Add to Library') : (followed ? 'Bookmarked' : 'Bookmark')}</button>
+            ${MGSApp.isApp ? `<button class="btn ghost" id="downloadAllBtn" style="font-size:13px">Download all chapters</button>` : ''}
           </div>
           <div class="small" style="margin-top:6px">${chapters.length} chapters on ${esc(manga.source || 'source')}</div>
         </div>
@@ -1764,6 +1787,11 @@ async function renderTitle(mangaId) {
         <h2 class="sect-title">Recommended by readers <button class="btn ghost" id="recBtn">+ Recommend similar titles</button></h2>
         <div class="hrow" id="recRow"></div>
       </div>`;
+
+    $('#downloadAllBtn')?.addEventListener('click', () => {
+      const list = chapters.map((c) => ({ url: c.url, num: c.number ?? '', label: 'Ch. ' + (c.number ?? '?') }));
+      MGSApp.download(mangaId, titleOf(manga), manga.cover ? `/api/img?u=${encodeURIComponent(manga.cover)}` : '', list);
+    });
 
     // Comix has no readable pages on its own (signed/encrypted API), so every
     // external chapter stays on this site: we open the same chapter number
@@ -2089,6 +2117,7 @@ async function renderReader(mangaId, chapterId, startPage) {
         </button>
         <div class="rbar-menu" id="rMenu" hidden>
           <button id="rGoTitle">Back to title</button>
+          ${MGSApp.isApp ? '<button id="rDownload">Download chapter</button>' : ''}
           <button id="rGoHome">Home</button>
           <button id="rShare">Share chapter</button>
           <button id="rSettings">Reader settings</button>
@@ -2262,6 +2291,11 @@ async function renderReader(mangaId, chapterId, startPage) {
       .map((c) => `<option value="${esc(c.id)}" ${String(c.id) === String(cid) ? 'selected' : ''}>${esc(chLabel(c))}</option>`)
       .join('');
     chSel.addEventListener('change', () => { location.hash = `#/reader/${mangaId}/${encodeURIComponent(chSel.value)}/0`; });
+
+    $('#rDownload')?.addEventListener('click', () => {
+      hideRMenu();
+      MGSApp.download(mangaId, mangaTitle, coverSrc, [{ url: cid, num: curCh.num || '', label: chLabel(curCh) }]);
+    });
 
     // Alt-source switcher (reader-only): same comic on other sources.
     // Hidden unless alternates exist; jumps to the same chapter number.
@@ -4127,6 +4161,24 @@ async function renderGenre(slug) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') open(false); });
   window.addEventListener('hashchange', () => open(false));
   $('#mmSettings')?.addEventListener('click', () => { open(false); openSettings(); });
+})();
+
+// ---------- Android Downloads navigation ----------
+(() => {
+  for (const id of ['downloadsNav', 'mmDownloads']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.hidden = !MGSApp.isApp;
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!MGSApp.isApp || !MGSApp.bridge || !MGSApp.bridge.openDownloads) {
+        toast('Downloads are available in the MyGhoulScans Android app');
+        return;
+      }
+      try { MGSApp.bridge.openDownloads(); }
+      catch (err) { toast('Could not open Downloads'); }
+    });
+  }
 })();
 
 // ---------- init ----------

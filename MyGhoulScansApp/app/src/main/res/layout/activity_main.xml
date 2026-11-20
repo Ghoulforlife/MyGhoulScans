@@ -1,14 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MainActivity">
+    android:background="@color/mgs_bg">
+
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/mgs_panel"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <ImageView
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="Logo" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:text="MyGhoulScans"
+            android:textColor="@color/white"
+            android:textStyle="bold"
+            android:textSize="17sp" />
+
+        <Button
+            android:id="@+id/topDownloads"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Downloads"
+            android:textSize="12sp"
+            android:textColor="@color/mgs_accent"
+            android:background="?android:attr/selectableItemBackground" />
+    </LinearLayout>
 
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-</RelativeLayout>
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:background="@color/mgs_panel"
+        android:baselineAligned="false">
+
+        <Button android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:text="⌂ Home" android:textSize="12sp"
+            android:textColor="@color/white" android:background="?android:attr/selectableItemBackground" />
+        <Button android:id="@+id/navSearch" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:text="⌕ Search" android:textSize="12sp"
+            android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
+        <Button android:id="@+id/navLibrary" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:text="☆ Library" android:textSize="12sp"
+            android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
+        <Button android:id="@+id/navDownloads" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:text="↓ Downloads" android:textSize="12sp"
+            android:textColor="@color/mgs_muted" android:background="?android:attr/selectableItemBackground" />
+    </LinearLayout>
+</LinearLayout>
