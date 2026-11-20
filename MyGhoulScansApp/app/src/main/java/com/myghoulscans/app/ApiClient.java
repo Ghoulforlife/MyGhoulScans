@@ -3,6 +3,8 @@ package com.myghoulscans.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -31,6 +33,37 @@ final class ApiClient {
     }
 
     static boolean isSignedIn() { return !token().isEmpty(); }
+
+    static JSONObject user() {
+        try { return new JSONObject(prefs == null ? "{}" : prefs.getString("user", "{}")); }
+        catch (Exception e) { return new JSONObject(); }
+    }
+
+    static void setUser(JSONObject u) {
+        if (prefs == null) return;
+        prefs.edit().putString("user", u.toString()).apply();
+    }
+
+    static JSONObject refreshMe() {
+        try {
+            JSONObject r = new JSONObject(get("/auth/me"));
+            JSONObject u = r.optJSONObject("user");
+            if (u != null) setUser(u);
+            return u == null ? user() : u;
+        } catch (Exception e) { return user(); }
+    }
+
+    static String avatarUrl(JSONObject u) {
+        String a = u == null ? "" : u.optString("avatar", "");
+        String id = u == null ? "" : u.optString("id", "");
+        if (a.startsWith("data:") || a.startsWith("http")) return a;
+        if (!a.isEmpty()) return BASE + "/img?u=" + qOrEmpty("https://ghoulforlife.github.io/uploads/" + a);
+        return BASE + "/auth/avatar/" + id + ".svg";
+    }
+
+    private static String qOrEmpty(String s) {
+        try { return q(s); } catch (Exception e) { return ""; }
+    }
 
     static String get(String path) throws Exception { return request("GET", path, null); }
 

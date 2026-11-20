@@ -34,6 +34,8 @@
         <activity android:name=".ComicDetailActivity" android:exported="false" />
         <activity android:name=".MoreActivity" android:exported="false" />
         <activity android:name=".LoginActivity" android:exported="false" />
+        <activity android:name=".ProfileActivity" android:exported="false" />
+        <activity android:name=".BoardActivity" android:exported="false" />
         <activity android:name=".DownloadsActivity" android:exported="false" />
         <activity android:name=".ChapterListActivity" android:exported="false" />
         <activity android:name=".ReaderActivity" android:exported="false" />

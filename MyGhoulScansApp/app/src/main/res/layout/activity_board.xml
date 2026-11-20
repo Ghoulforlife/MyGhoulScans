@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/mgs_bg">
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="52dp"
+        android:background="@color/mgs_panel" android:gravity="center_vertical" android:paddingStart="10dp">
+        <Button android:id="@+id/boardBack" android:layout_width="wrap_content" android:layout_height="40dp"
+            android:text="←" android:textSize="20sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+        <TextView android:id="@+id/boardTitle" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Leaderboard" android:textColor="@color/white" android:textSize="17sp" android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+    </LinearLayout>
+    <TextView android:id="@+id/boardInfo" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textColor="@color/mgs_accent" android:textSize="14sp" android:padding="14dp" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:id="@+id/boardList" android:orientation="vertical"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="12dp" />
+    </ScrollView>
+</LinearLayout>

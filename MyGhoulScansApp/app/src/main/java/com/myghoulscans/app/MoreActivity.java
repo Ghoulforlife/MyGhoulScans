@@ -11,6 +11,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
 public class MoreActivity extends Activity {
     private static final String SITE = "https://ghoulforlife.github.io/MyGhoulScans/";
     private LinearLayout list;
@@ -39,17 +41,24 @@ public class MoreActivity extends Activity {
         LinearLayout txt = new LinearLayout(this);
         txt.setOrientation(LinearLayout.VERTICAL);
         txt.setPadding(14, 0, 0, 0);
+        JSONObject me = ApiClient.user();
         TextView name = new TextView(this);
-        name.setText(ApiClient.isSignedIn() ? "MyGhoulScans Reader" : "Guest");
+        name.setText(ApiClient.isSignedIn() ? me.optString("display_name", "Reader") : "Guest");
         name.setTextColor(0xFFFFFFFF);
         name.setTextSize(18);
         name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         txt.addView(name);
         TextView sub = new TextView(this);
-        sub.setText(ApiClient.isSignedIn() ? "Your account is connected" : "Sign in to sync library & progress");
-        sub.setTextColor(0xFF979BA8);
+        sub.setText(ApiClient.isSignedIn() ? "★ " + me.optInt("rp", 0) + " RP · account connected"
+                : "Sign in to sync library & progress");
+        sub.setTextColor(ApiClient.isSignedIn() ? 0xFFF1C40F : 0xFF979BA8);
         sub.setTextSize(12);
         txt.addView(sub);
+        if (ApiClient.isSignedIn()) {
+            String av = ApiClient.avatarUrl(me);
+            com.bumptech.glide.Glide.with(this).load(av).placeholder(R.mipmap.ic_launcher)
+                    .error(R.mipmap.ic_launcher).into(avatar);
+        }
         top.addView(txt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         card.addView(top);
 
@@ -64,14 +73,14 @@ public class MoreActivity extends Activity {
         ap.topMargin = 18;
         auth.setLayoutParams(ap);
         auth.setOnClickListener(v -> {
-            if (ApiClient.isSignedIn()) web("#/account");
+            if (ApiClient.isSignedIn()) go(ProfileActivity.class);
             else startActivity(new Intent(this, LoginActivity.class));
         });
         card.addView(auth);
         list.addView(card, margins(0, 0, 0, 20));
 
         section("ACCOUNT");
-        row("👤", "Account settings", () -> web("#/account"));
+        row("👤", "Profile & account", () -> go(ProfileActivity.class));
         row("☆", "My Library", () -> go(LibraryActivity.class));
         row("↓", "Downloads", () -> go(DownloadsActivity.class));
         if (ApiClient.isSignedIn()) {
@@ -83,14 +92,14 @@ public class MoreActivity extends Activity {
         }
 
         section("DISCOVER");
-        row("🏆", "Leaderboard", () -> web("#/leaderboard"));
-        row("🛒", "RP Shop", () -> web("#/shop"));
-        row("✨", "Discover", () -> web("#/discover"));
-        row("🔥", "Popular comics", () -> web("#/popular"));
-        row("📖", "Originals", () -> web("#/originals"));
+        row("🏆", "Leaderboard", () -> board("leaderboard"));
+        row("🛒", "RP Shop", () -> board("shop"));
+        row("✨", "Discover", () -> board("discover"));
+        row("🔥", "Popular comics", () -> board("popular"));
+        row("📖", "Originals", () -> board("originals"));
 
         section("APP");
-        row("⚙", "Settings / Theme", () -> web("#/account"));
+        row("⚙", "Settings / Theme", () -> go(ProfileActivity.class));
         row("💬", "Join Discord", () -> {
             try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://discord.gg/7UcfZmYTX"))); }
             catch (Exception ignored) {}
@@ -154,6 +163,12 @@ public class MoreActivity extends Activity {
 
         r.setOnClickListener(v -> click.run());
         list.addView(r, margins(0, 0, 0, 8));
+    }
+
+    private void board(String mode) {
+        Intent i = new Intent(this, BoardActivity.class);
+        i.putExtra("mode", mode);
+        startActivity(i);
     }
 
     private void web(String route) {

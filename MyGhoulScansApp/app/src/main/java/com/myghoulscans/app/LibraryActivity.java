@@ -18,6 +18,7 @@ import org.json.JSONObject;
 
 public class LibraryActivity extends AppCompatActivity {
     private LinearLayout list;
+    private String loadError;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,7 +43,7 @@ public class LibraryActivity extends AppCompatActivity {
         @Override protected JSONArray doInBackground(Void... unused) {
             JSONArray ids = null;
             try { ids = new JSONObject(ApiClient.get("/library")).optJSONArray("mangaIds"); }
-            catch (Exception ignored) {}
+            catch (Exception e) { loadError = e.getMessage(); }
             JSONArray out = new JSONArray();
             if (ids == null) return out;
             for (int i = 0; i < ids.length(); i++) {
@@ -50,19 +51,31 @@ public class LibraryActivity extends AppCompatActivity {
                 if (id.isEmpty()) continue;
                 try {
                     JSONObject t = new JSONObject(ApiClient.get("/comick/title?id=" + ApiClient.q(id))).optJSONObject("data");
-                    if (t != null) {
+                    JSONObject c = new JSONObject();
+                    c.put("id", id);
+                    c.put("title", t == null ? id : t.optString("title", "Untitled"));
+                    c.put("cover", t == null ? "" : t.optString("cover", ""));
+                    out.put(c);
+                } catch (Exception ignored) {
+                    try {
                         JSONObject c = new JSONObject();
-                        c.put("id", id);
-                        c.put("title", t.optString("title", "Untitled"));
-                        c.put("cover", t.optString("cover", ""));
+                        c.put("id", id); c.put("title", id); c.put("cover", "");
                         out.put(c);
-                    }
-                } catch (Exception ignored) {}
+                    } catch (Exception ignored2) {}
+                }
             }
             return out;
         }
         @Override protected void onPostExecute(JSONArray arr) {
             list.removeAllViews();
+            if (loadError != null) {
+                TextView t = new TextView(LibraryActivity.this);
+                t.setText("Could not load library: " + loadError);
+                t.setTextColor(0xFFE11D2E);
+                t.setTextSize(13);
+                list.addView(t);
+                return;
+            }
             if (arr == null || arr.length() == 0) {
                 TextView t = new TextView(LibraryActivity.this);
                 t.setText("Your library is empty. Bookmark comics on the website.");

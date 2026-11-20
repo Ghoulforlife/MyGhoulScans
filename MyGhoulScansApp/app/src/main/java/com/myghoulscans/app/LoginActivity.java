@@ -71,6 +71,7 @@ public class LoginActivity extends Activity {
                     String token = res.optString("token", "");
                     if (token.isEmpty()) return res.optString("error", "No token returned");
                     ApiClient.setToken(token);
+                    ApiClient.refreshMe();
                     return null;
                 } catch (Exception e) {
                     String msg = e.getMessage();
