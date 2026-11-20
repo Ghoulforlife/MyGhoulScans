@@ -23,10 +23,11 @@ const err = (message, status = 502) => json({ error: message }, status, 0);
 // ---------- Comick source API ----------
 const COMICK_API_DEFAULT = 'https://comick-source-api.notaspider.dev';
 const SCRAPE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 MyGhoulScans/2.0';
-const COMICK_DEFAULT_SOURCES = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon'];
-// Upstream search health, verified 2026-09-17. Priority sources return
-// results; dead ones are Shutdown or always empty.
-const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon'];
+const COMICK_DEFAULT_SOURCES = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon', 'qi-scans', 'mangadex'];
+// Upstream search health. Priority sources return results; dead ones are
+// Shutdown or always empty. qi-scans + mangadex verified 2026-11-20: they
+// find titles the WordPress sources miss (e.g. "Legacy of the Skipped Hero").
+const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon', 'qi-scans', 'mangadex'];
 const SEARCH_DEAD = new Set(['bato', 'mangapark', 'falcon-scans', 'weebdex', 'mangasushi', 'madarascans']);
 
 // base64url without Node Buffer (Workers runtime).
@@ -881,7 +882,7 @@ export default {
         const multi = String(q.get('sources') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
         const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
         // Only the verified working sources are ever queried (see server.js).
-        const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s)).slice(0, 6);
+        const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s));
         const settled = await Promise.allSettled(sources.map(async (source) => {
           const data = await comickApi(env, '/api/search', { method: 'POST', body: { query, source } });
           return (data.results || []).map((r) => normResult(source, r));

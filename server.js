@@ -783,13 +783,15 @@ app.get('/api/leaderboard', (req, res) => {
 // those are scraped directly from source sites below (same cheerio-style
 // approach upstream uses, dependency-free).
 // Sources used when the client doesn't pick one. Override with
-// COMICK_SOURCES="mangaread,flamecomics,mangayy,mangataro,demonicscans,webtoon".
-const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,flamecomics,mangayy,mangataro,demonicscans,webtoon')
+// COMICK_SOURCES="mangaread,flamecomics,mangayy,mangataro,demonicscans,webtoon,qi-scans,mangadex".
+const COMICK_DEFAULT_SOURCES = (process.env.COMICK_SOURCES || 'mangaread,flamecomics,mangayy,mangataro,demonicscans,webtoon,qi-scans,mangadex')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-// Upstream search health, verified 2026-09-17 (query "solo leveling" etc.).
+// Upstream search health (query "solo leveling" etc.).
 // Priority sources return results; dead ones are Shutdown or always empty.
 // webtoon (webtoons.com) is a manhwa/webtoon source — included in default search.
-const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon'];
+// qi-scans + mangadex verified 2026-11-20: they find titles the WordPress
+// sources miss (e.g. "Legacy of the Skipped Hero").
+const SEARCH_PRIORITY = ['mangaread', 'flamecomics', 'mangayy', 'mangataro', 'demonicscans', 'webtoon', 'qi-scans', 'mangadex'];
 const SEARCH_DEAD = new Set(['bato', 'mangapark', 'falcon-scans', 'weebdex', 'mangasushi', 'madarascans']);
 
 // Client IDs look like "cx:mangaread:<base64url(manga page URL)>": one clean
@@ -1317,7 +1319,7 @@ app.get('/api/comick/search', async (req, res) => {
     const single = String(req.query.source || '').trim().toLowerCase();
     const multi = String(req.query.sources || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     const requested = single ? [single] : (multi.length ? multi : COMICK_DEFAULT_SOURCES);
-    const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s)).slice(0, 6);
+    const sources = SEARCH_PRIORITY.filter((s) => requested.includes(s));
     const settled = await Promise.allSettled(sources.map(async (source) => {
       const data = await comickApi('/api/search', { method: 'POST', body: { query: q, source } });
       return (data.results || []).map((r) => normResult(source, r));
