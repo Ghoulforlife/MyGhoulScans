@@ -1,6 +1,7 @@
 package com.myghoulscans.app;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -125,6 +126,22 @@ final class DownloadStore {
 
     static boolean deleteTitle(Context c, String mangaId) {
         return deleteRecursive(titleDir(c, mangaId));
+    }
+
+    private static SharedPreferences readPrefs(Context c) {
+        return c.getSharedPreferences("mgs_read", Context.MODE_PRIVATE);
+    }
+
+    static void markRead(Context c, String mangaId, String chapterUrl) {
+        String key = mangaId + "|" + chapterUrl;
+        java.util.Set<String> set = new java.util.HashSet<>(readPrefs(c).getStringSet("chapters", new java.util.HashSet<String>()));
+        set.add(key);
+        readPrefs(c).edit().putStringSet("chapters", set).apply();
+    }
+
+    static boolean isRead(Context c, String mangaId, String chapterUrl) {
+        return readPrefs(c).getStringSet("chapters", new java.util.HashSet<String>())
+                .contains(mangaId + "|" + chapterUrl);
     }
 
     private static boolean deleteRecursive(File f) {

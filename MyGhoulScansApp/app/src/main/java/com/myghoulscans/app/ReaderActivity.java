@@ -25,6 +25,7 @@ public class ReaderActivity extends Activity {
         String chapterUrl = getIntent().getStringExtra("chapterUrl");
         if (mangaId == null || chapterUrl == null) { finish(); return; }
 
+        DownloadStore.markRead(this, mangaId, chapterUrl);
         File dir = DownloadStore.chapterDir(this, mangaId, chapterUrl);
         List<File> imgs = new ArrayList<>();
         File[] kids = dir.listFiles();
