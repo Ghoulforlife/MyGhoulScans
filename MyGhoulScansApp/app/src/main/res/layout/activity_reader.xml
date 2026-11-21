@@ -8,20 +8,33 @@
 
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="52dp"
         android:background="#DD15151B" android:gravity="center_vertical">
-        <Button android:id="@+id/readerMode" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="Webtoon" android:textSize="11sp" android:textColor="@color/white"
-            android:background="?android:attr/selectableItemBackground" />
-        <Button android:id="@+id/readerAuto" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="Auto" android:textSize="11sp" android:textColor="@color/white"
-            android:background="?android:attr/selectableItemBackground" />
-        <Button android:id="@+id/readerBright" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="☀ 100" android:textSize="11sp" android:textColor="@color/white"
-            android:background="?android:attr/selectableItemBackground" />
-        <Button android:id="@+id/readerPreload" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="Preload" android:textSize="11sp" android:textColor="@color/white"
-            android:background="?android:attr/selectableItemBackground" />
+
         <Button android:id="@+id/readerBack" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="← Back" android:textSize="11sp" android:textColor="@color/mgs_accent"
+            android:text="‹ Back" android:textSize="10sp" android:textColor="@color/mgs_accent"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerPrev" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="‹ Prev" android:textSize="10sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerMode" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="Webtoon" android:textSize="10sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerAuto" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="Auto" android:textSize="10sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerBright" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="☀ 100" android:textSize="10sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerPreload" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="Preload" android:textSize="10sp" android:textColor="@color/white"
+            android:background="?android:attr/selectableItemBackground" />
+
+        <Button android:id="@+id/readerNext" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+            android:text="Next ›" android:textSize="10sp" android:textColor="@color/white"
             android:background="?android:attr/selectableItemBackground" />
     </LinearLayout>
 </LinearLayout>

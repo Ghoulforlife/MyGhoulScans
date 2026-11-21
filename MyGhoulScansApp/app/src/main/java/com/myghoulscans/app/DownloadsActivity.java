@@ -262,11 +262,11 @@ public class DownloadsActivity extends Activity {
 
         Button open = new Button(this);
         open.setText("Read Offline");
-        open.setTextSize(9);
+        open.setTextSize(14);
         open.setAllCaps(false);
         open.setMinWidth(0);
         open.setMinimumWidth(0);
-        open.setPadding(Views.dp(this, 3), 0, Views.dp(this, 3), 0);
+        open.setPadding(Views.dp(this, 8), Views.dp(this, 6), Views.dp(this, 8), Views.dp(this, 6));
         open.setTextColor(0xFF2ECC71);
         open.setBackgroundResource(android.R.color.transparent);
         open.setOnClickListener(v -> {
@@ -276,6 +276,16 @@ public class DownloadsActivity extends Activity {
             startActivity(i);
         });
         row.addView(open);
+
+        if (!manage) {
+            row.setClickable(true);
+            row.setOnClickListener(v -> {
+                Intent i = new Intent(this, ReaderActivity.class);
+                i.putExtra("mangaId", mangaId);
+                i.putExtra("chapterUrl", curl);
+                startActivity(i);
+            });
+        }
 
         if (manage) {
             Button del = new Button(this);
