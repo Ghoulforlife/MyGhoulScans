@@ -4,11 +4,15 @@ import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import android.app.Dialog;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -21,6 +25,13 @@ public class ComicDetailActivity extends AppCompatActivity {
     private String mangaId, title, cover;
     private JSONArray chapters;
     private LinearLayout chapterList;
+    private boolean sheetOpen;
+    private final java.util.Set<String> selected = new java.util.HashSet<>();
+    private int rangeAnchor = -1;
+    private int resumeIdx = -1;
+    private Dialog sheet;
+    private TextView sheetCount, sheetSize;
+    private Button batchBtn;
     private boolean bookmarked;
 
     @Override
@@ -93,6 +104,24 @@ public class ComicDetailActivity extends AppCompatActivity {
         @Override protected void onPostExecute(Void v) {
             if (chapters == null) chapters = new JSONArray();
             ((TextView) findViewById(R.id.detailCount)).setText(chapters.length() + " chapters");
+            if (ApiClient.isSignedIn()) {
+                JSONArray pr = ApiClient.progress();
+                if (pr != null) {
+                    for (int i = 0; i < pr.length(); i++) {
+                        try {
+                            JSONObject p = pr.getJSONObject(i);
+                            if (mangaId.equals(p.optString("manga_id", ""))) {
+                                for (int j = 0; j < chapters.length(); j++) {
+                                    try {
+                                        if (chapters.getJSONObject(j).optString("url", "").equals(p.optString("chapter_id", ""))) { resumeIdx = j; break; }
+                                    } catch (Exception ignored) {}
+                                }
+                                break;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
             showProgress();
             chapterList.removeAllViews();
             for (int i = 0; i < chapters.length(); i++) {
@@ -103,7 +132,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                 try { openOnline(chapters.getJSONObject(0).optString("url", "")); } catch (Exception ignored) {}
             });
             findViewById(R.id.detailBookmark).setOnClickListener(click -> toggleBookmark());
-            findViewById(R.id.detailDownloadAll).setOnClickListener(click -> downloadAll());
+            findViewById(R.id.detailDownloadAll).setOnClickListener(click -> openSheet());
         }
     }
 
@@ -187,6 +216,162 @@ public class ComicDetailActivity extends AppCompatActivity {
             o.put("label", "Ch. " + (n == null ? "?" : n));
         } catch (Exception ignored) {}
         return o;
+    }
+
+    // ---------- Batch download sheet ----------
+    private void openSheet() {
+        if (chapters == null || chapters.length() == 0) { Toast.makeText(this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
+        selected.clear();
+        rangeAnchor = -1;
+        Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFF121218);
+        LinearLayout pills = new LinearLayout(this);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.setPadding(12, 12, 12, 8);
+        Button p5 = new Button(this); p5.setText("Next 5"); p5.setTextSize(12); p5.setAllCaps(false);
+        p5.setOnClickListener(v -> selectN(5));
+        Button p10 = new Button(this); p10.setText("Next 10"); p10.setTextSize(12); p10.setAllCaps(false);
+        p10.setOnClickListener(v -> selectN(10));
+        Button pall = new Button(this); pall.setText("All"); pall.setTextSize(12); pall.setAllCaps(false);
+        pall.setOnClickListener(v -> selectAll());
+        Button pclear = new Button(this); pclear.setText("Clear"); pclear.setTextSize(12); pclear.setAllCaps(false);
+        pclear.setOnClickListener(v -> { selected.clear(); refreshSheet(d); });
+        pills.addView(p5); pills.addView(p10); pills.addView(pall); pills.addView(pclear);
+        root.addView(pills, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ScrollView sv = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        for (int i = 0; i < chapters.length(); i++) {
+            try {
+                final JSONObject c = chapters.getJSONObject(i);
+                final int idx = i;
+                final String url = c.optString("url", "");
+                final String label = "Ch. " + (c.opt("number") == null ? "?" : c.opt("number"));
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                row.setPadding(14, 12, 14, 12);
+                row.setBackgroundColor(0xFF1C1C24);
+                TextView check = new TextView(this);
+                check.setText(selected.contains(url) ? "✓" : "○");
+                check.setTextSize(18);
+                check.setTextColor(selected.contains(url) ? 0xFFE11D2E : 0xFF979BA8);
+                check.setOnClickListener(v -> toggleSel(idx));
+                TextView lbl = new TextView(this);
+                lbl.setText(label);
+                lbl.setTextColor(0xFFFFFFFF);
+                lbl.setTextSize(14);
+                lbl.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                row.addView(check);
+                row.addView(lbl);
+                row.setOnClickListener(v -> selectOrToggle(idx));
+                row.setOnLongClickListener(v -> { rangeAnchor = idx; return true; });
+                list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            } catch (Exception ignored) {}
+        }
+        sv.addView(list, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setPadding(14, 14, 14, 16);
+        sheetCount = new TextView(this);
+        sheetCount.setText("0 chapters selected");
+        sheetCount.setTextColor(0xFF979BA8);
+        sheetCount.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        sheetSize = new TextView(this);
+        sheetSize.setText("");
+        sheetSize.setTextColor(0xFF2ECC71);
+        sheetSize.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button dlBtn = batchBtn = new Button(this);
+        dlBtn.setText("Download");
+        dlBtn.setTextSize(14);
+        dlBtn.setAllCaps(false);
+        dlBtn.setTextColor(0xFFFFFFFF);
+        dlBtn.setBackgroundResource(R.drawable.mgs_accent_button);
+        dlBtn.setOnClickListener(v -> confirmSheet());
+        footer.addView(sheetCount);
+        footer.addView(sheetSize);
+        footer.addView(dlBtn);
+        root.addView(footer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        d.setContentView(root);
+        d.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        sheet = d;
+        d.show();
+        refreshSheet(d);
+    }
+
+    private void toggleSel(int i) {
+        try { String url = chapters.getJSONObject(i).optString("url", ""); if (selected.contains(url)) selected.remove(url); else selected.add(url); }
+        catch (Exception ignored) {}
+        refreshSheet(sheet);
+    }
+
+    private void selectOrToggle(int i) {
+        if (rangeAnchor >= 0) {
+            int a = Math.min(rangeAnchor, i), b = Math.max(rangeAnchor, i);
+            selected.clear();
+            for (int j = a; j <= b; j++) { try { selected.add(chapters.getJSONObject(j).optString("url", "")); } catch (Exception ignored) {} }
+            rangeAnchor = -1;
+        } else {
+            toggleSel(i);
+        }
+        if (sheet != null) refreshSheet(sheet);
+    }
+
+    private void selectN(int n) {
+        selected.clear();
+        int start = resumeIdx + 1;
+        if (start < 0) start = 0;
+        int end = Math.min(chapters.length(), start + n);
+        for (int i = start; i < end; i++) { try { selected.add(chapters.getJSONObject(i).optString("url", "")); } catch (Exception ignored) {} }
+        if (sheet != null) refreshSheet(sheet);
+    }
+
+    private void selectAll() {
+        selected.clear();
+        for (int i = 0; i < chapters.length(); i++) { try { selected.add(chapters.getJSONObject(i).optString("url", "")); } catch (Exception ignored) {} }
+        if (sheet != null) refreshSheet(sheet);
+    }
+
+    private void refreshSheet(Dialog d) {
+        int n = selected.size();
+        sheetCount.setText(n + " chapter" + (n == 1 ? "" : "s") + " selected");
+        long bytes = 0;
+        for (int i = 0; i < chapters.length(); i++) {
+            try {
+                if (!selected.contains(chapters.getJSONObject(i).optString("url", ""))) continue;
+                bytes += chapters.getJSONObject(i).optLong("bytes", 0);
+            } catch (Exception ignored) {}
+        }
+        sheetSize.setText(bytes > 0 ? DownloadStore.readable(bytes) + " · tap Download to start" : "size estimating…");
+        Button dlBtn = batchBtn;
+        if (dlBtn != null) dlBtn.setEnabled(n > 0);
+    }
+
+    private void confirmSheet() {
+        if (selected.isEmpty()) { Toast.makeText(this, "Select chapters first", Toast.LENGTH_SHORT).show(); return; }
+        JSONArray list = new JSONArray();
+        for (int i = 0; i < chapters.length(); i++) {
+            try {
+                JSONObject c = chapters.getJSONObject(i);
+                String u = c.optString("url", "");
+                if (!selected.contains(u)) continue;
+                JSONObject p = new JSONObject();
+                p.put("url", u);
+                p.put("num", c.opt("number") == null ? "" : String.valueOf(c.opt("number")));
+                p.put("label", "Ch. " + (c.opt("number") == null ? "?" : c.opt("number")));
+                list.put(p);
+            } catch (Exception ignored) {}
+        }
+        if (list.length() == 0) { Toast.makeText(this, "No chapters selected", Toast.LENGTH_SHORT).show(); return; }
+        if (sheet != null) sheet.dismiss();
+        sheetOpen = false;
+        startDownload(list);
     }
 
     private void downloadAll() {
