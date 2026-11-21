@@ -42,6 +42,7 @@ public class ComicDetailActivity extends AppCompatActivity {
     private boolean descExpanded;
     private String resumeUrl = "";
     private int resumePage = 0;
+    private final java.util.Set<String> bookmarkedRecs = new java.util.HashSet<>();
     private boolean newestFirst = false;
     private boolean showAllChapters = false;
     private final java.util.Set<String> downloaded = new java.util.HashSet<>();
@@ -151,10 +152,15 @@ public class ComicDetailActivity extends AppCompatActivity {
             // related (More like this)
             try {
                 String g = (genres != null && genres.length() > 0) ? genres.optString(0, "") : "";
-                if (!g.isEmpty() && source != null && !source.isEmpty()) {
-                    String rRaw = ApiClient.getCached("/comick/genre?source=" + source + "&genre=" + ApiClient.q(g) + "&page=1&enrich=1", 30 * 60 * 1000);
+                String[] srcs = new String[] { source, "mangaread" };
+                for (String src : srcs) {
+                    if (g.isEmpty() || src == null || src.isEmpty()) continue;
+                    String rRaw = ApiClient.getCached("/comick/genre?source=" + src + "&genre=" + ApiClient.q(g) + "&page=1&enrich=1", 30 * 60 * 1000);
                     if (rRaw != null) {
-                        try { related = new JSONObject(rRaw).optJSONArray("data"); } catch (Exception ignored) {}
+                        try {
+                            JSONArray d = new JSONObject(rRaw).optJSONArray("data");
+                            if (d != null && d.length() > 0) { related = d; break; }
+                        } catch (Exception ignored) {}
                     }
                 }
             } catch (Exception ignored) {}
@@ -287,6 +293,32 @@ public class ComicDetailActivity extends AppCompatActivity {
                 t.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 t.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
                 card.addView(t);
+                LinearLayout meta = new LinearLayout(this);
+                meta.setOrientation(LinearLayout.HORIZONTAL);
+                meta.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
+                TextView rt = new TextView(this);
+                rt.setText("★ " + r.optString("rating", "—"));
+                rt.setTextColor(0xFFFFC107);
+                rt.setTextSize(10);
+                rt.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                meta.addView(rt);
+                Button bm = new Button(this);
+                bm.setText(bookmarkedRecs.contains(rid) ? "★" : "☆");
+                bm.setTextSize(14);
+                bm.setAllCaps(false);
+                bm.setTextColor(bookmarkedRecs.contains(rid) ? 0xFFE11D2E : 0xFF979BA8);
+                bm.setBackgroundResource(android.R.color.transparent);
+                bm.setPadding(0, 0, 0, 0);
+                bm.setOnClickListener(v -> {
+                    if (!ApiClient.isSignedIn()) { Toast.makeText(ComicDetailActivity.this, "Sign in to bookmark", Toast.LENGTH_SHORT).show(); return; }
+                    boolean now = !bookmarkedRecs.contains(rid);
+                    ApiClient.bookmark(rid, now);
+                    if (now) bookmarkedRecs.add(rid); else bookmarkedRecs.remove(rid);
+                    bm.setText(now ? "★" : "☆");
+                    bm.setTextColor(now ? 0xFFE11D2E : 0xFF979BA8);
+                });
+                meta.addView(bm);
+                card.addView(meta);
                 card.setOnClickListener(v -> openDetail(rid, rtitle, rcover));
                 LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 clp.rightMargin = Views.dp(this, 8);

@@ -25,7 +25,7 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Sort toggle ↑↓ (Oldest first / Newest first)
 - [x] Preview first 3–5 chapters + "Show All 96 Chapters ⌄"
 - [x] Inline status icons per chapter: ✓ downloaded, ↓ available (queued/downloading state pending)
-- [x] "More like this" horizontal carousel: genre-matched, tappable (ratings + 1-tap bookmark pending)
+- [x] "More like this" horizontal carousel: genre-matched, ratings, 1-tap bookmark
 
 ## 4. Downloads Tab
 - [x] Storage overview bar
@@ -39,7 +39,7 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Auto-advance to next chapter at the end
 - [x] Webtoon (long-strip) + page modes
 - [x] Bigger Read button; whole chapter row tappable
-- [ ] Eye-care brightness + auto-scroll speed slider
+- [x] Eye-care warm tint (long-press brightness) + auto-scroll speed cycle (1x/2x/3x)
 - [x] Smart preloading of next chapter
 
 ## 6. Offline Architecture
@@ -50,15 +50,15 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Corrupt-file recovery (retry once on partial failure)
 - [x] Auto-delete after reading (opt-in, 24h)
 
-## 7. Engagement & Extras
-- [ ] Streaks / quests
-- [ ] Cosmetic rewards (frames, titles, colors)
-- [ ] Prediction polls
-- [ ] Custom tags / collections
-- [ ] Release calendar
-- [ ] Storage auto-clean
-- [ ] Reaction bar / comments
-- [ ] Panel clipper / share card
+## 7. Engagement & Extras (mostly needs backend support)
+- [x] Streaks (counted locally in DownloadStore.markRead; shown in More/Profile)
+- [ ] Cosmetic rewards (frames, titles, colors) — needs server
+- [ ] Prediction polls — needs server
+- [ ] Custom tags / collections — local-only, doable later
+- [ ] Release calendar — needs server
+- [ ] Storage auto-clean — folded into auto-delete toggle (24h)
+- [ ] Reaction bar / comments — exists on website; native opens via WebView
+- [ ] Panel clipper / share card — heavy, deferred
 
 ## Done previously
 - [x] Back arrow / nav never exits app; tab back → Home
