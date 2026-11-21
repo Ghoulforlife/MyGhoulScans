@@ -1,6 +1,7 @@
 package com.myghoulscans.app;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.AsyncTask;
@@ -30,7 +31,7 @@ import java.util.Set;
 
 /** Library: 3-column cover grid, filter pills, search and progress badges. */
 public class LibraryActivity extends AppCompatActivity {
-    private static final String[] FILTERS = {"All", "Reading", "Unread", "Completed"};
+    private static final String[] FILTERS = {"All", "Reading", "Unread", "Completed", "Tagged"};
     private LinearLayout grid, filters;
     private EditText search;
     private String filter = "All";
@@ -119,6 +120,7 @@ public class LibraryActivity extends AppCompatActivity {
                     c.put("cover", t == null ? "" : t.optString("cover", ""));
                     c.put("status", t == null ? "" : t.optString("status", ""));
                     c.put("reading", pr != null && readingIds.contains(id));
+                    c.put("tag", tagOf(LibraryActivity.this, id));
                     // find progress label
                     String pl = "";
                     if (pr != null) {
@@ -165,6 +167,7 @@ public class LibraryActivity extends AppCompatActivity {
                 if ("Reading".equals(filter) && !read) continue;
                 if ("Unread".equals(filter) && read) continue;
                 if ("Completed".equals(filter) && !status.toLowerCase().contains("complete")) continue;
+                if ("Tagged".equals(filter) && o.optString("tag", "").isEmpty()) continue;
                 shown.add(o);
             } catch (Exception ignored) {}
         }
@@ -223,6 +226,17 @@ public class LibraryActivity extends AppCompatActivity {
         p.setPadding(3, 1, 3, 0);
         c.addView(p);
 
+        String tag = o.optString("tag", "");
+        if (!tag.isEmpty()) {
+            TextView tg = new TextView(this);
+            tg.setText("#" + tag);
+            tg.setTextColor(0xFF979BA8);
+            tg.setTextSize(9);
+            tg.setSingleLine(true);
+            tg.setPadding(3, 1, 3, 0);
+            c.addView(tg);
+        }
+
         final String ct = title, cc = cover;
         c.setOnClickListener(v -> {
             Intent i = new Intent(this, ComicDetailActivity.class);
@@ -230,13 +244,52 @@ public class LibraryActivity extends AppCompatActivity {
             startActivity(i);
         });
         c.setOnLongClickListener(v -> {
-            ApiClient.bookmark(id, false);
-            items.remove(o);
-            paint();
-            Toast.makeText(this, "Removed from Library", Toast.LENGTH_SHORT).show();
+            String[] opts = {"Set tag", "Remove from library"};
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setItems(opts, (d, which) -> {
+                        if (which == 0) {
+                            android.widget.EditText et = new android.widget.EditText(this);
+                            et.setText(tagOf(LibraryActivity.this, id));
+                            et.setHint("tag name");
+                            new android.app.AlertDialog.Builder(this)
+                                    .setTitle("Tag")
+                                    .setView(et)
+                                    .setPositiveButton("Save", (dd, ww) -> {
+                                        setTag(this, id, et.getText().toString());
+                                        items.remove(o);
+                                        paint();
+                                    })
+                                    .setNegativeButton("Cancel", null)
+                                    .show();
+                        } else {
+                            ApiClient.bookmark(id, false);
+                            items.remove(o);
+                            paint();
+                            Toast.makeText(this, "Removed from Library", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .show();
             return true;
         });
         return c;
+    }
+
+    private static android.content.SharedPreferences getPrefs(Context c) {
+        return c.getApplicationContext().getSharedPreferences("mgs_tags", Context.MODE_PRIVATE);
+    }
+
+    private static String tagOf(Context c, String mangaId) {
+        try { return new org.json.JSONObject(getPrefs(c).getString("tags", "{}")).optString(mangaId, ""); }
+        catch (Exception e) { return ""; }
+    }
+
+    private static void setTag(Context c, String mangaId, String tag) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(getPrefs(c).getString("tags", "{}"));
+            if (tag == null || tag.trim().isEmpty()) o.remove(mangaId); else o.put(mangaId, tag.trim());
+            getPrefs(c).edit().putString("tags", o.toString()).apply();
+        } catch (Exception ignored) {}
     }
 
     @Override

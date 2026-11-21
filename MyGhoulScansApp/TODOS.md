@@ -54,7 +54,7 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Streaks (counted locally in DownloadStore.markRead; shown in More/Profile)
 - [ ] Cosmetic rewards (frames, titles, colors) — needs server
 - [ ] Prediction polls — needs server
-- [ ] Custom tags / collections — local-only, doable later
+- [x] Custom tags / collections — local-only (long-press a library card to tag)
 - [ ] Release calendar — needs server
 - [ ] Storage auto-clean — folded into auto-delete toggle (24h)
 - [ ] Reaction bar / comments — exists on website; native opens via WebView
