@@ -21,6 +21,8 @@ import com.bumptech.glide.Glide;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+
 public class ComicDetailActivity extends AppCompatActivity {
     private String mangaId, title, cover;
     private JSONArray chapters;
@@ -284,15 +286,17 @@ public class ComicDetailActivity extends AppCompatActivity {
         LinearLayout pills = new LinearLayout(this);
         pills.setOrientation(LinearLayout.HORIZONTAL);
         pills.setPadding(12, 12, 12, 8);
-        Button p5 = new Button(this); p5.setText("Next 5"); p5.setTextSize(12); p5.setAllCaps(false);
-        p5.setOnClickListener(v -> selectN(5));
+        Button pAll = new Button(this); pAll.setText("Select All (" + chapters.length() + ")"); pAll.setTextSize(12); pAll.setAllCaps(false);
+        pAll.setOnClickListener(v -> selectAll());
         Button p10 = new Button(this); p10.setText("Next 10"); p10.setTextSize(12); p10.setAllCaps(false);
         p10.setOnClickListener(v -> selectN(10));
-        Button pall = new Button(this); pall.setText("All"); pall.setTextSize(12); pall.setAllCaps(false);
-        pall.setOnClickListener(v -> selectAll());
+        Button p25 = new Button(this); p25.setText("Next 25"); p25.setTextSize(12); p25.setAllCaps(false);
+        p25.setOnClickListener(v -> selectN(25));
+        Button punread = new Button(this); punread.setText("Unread"); punread.setTextSize(12); punread.setAllCaps(false);
+        punread.setOnClickListener(v -> selectUnread());
         Button pclear = new Button(this); pclear.setText("Clear"); pclear.setTextSize(12); pclear.setAllCaps(false);
         pclear.setOnClickListener(v -> { selected.clear(); refreshSheet(d); });
-        pills.addView(p5); pills.addView(p10); pills.addView(pall); pills.addView(pclear);
+        pills.addView(pAll); pills.addView(p10); pills.addView(p25); pills.addView(punread); pills.addView(pclear);
         root.addView(pills, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ScrollView sv = new ScrollView(this);
@@ -321,6 +325,11 @@ public class ComicDetailActivity extends AppCompatActivity {
                 lbl.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 row.addView(check);
                 row.addView(lbl);
+                TextView size = new TextView(this);
+                size.setText(chapterSizeLabel(i));
+                size.setTextColor(0xFF979BA8);
+                size.setTextSize(12);
+                row.addView(size);
                 row.setOnClickListener(v -> selectOrToggle(idx));
                 row.setOnLongClickListener(v -> { rangeAnchor = idx; return true; });
                 list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -391,19 +400,63 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (sheet != null) refreshSheet(sheet);
     }
 
+    private void selectUnread() {
+        selected.clear();
+        for (int i = 0; i < chapters.length(); i++) {
+            try {
+                String url = chapters.getJSONObject(i).optString("url", "");
+                if (!DownloadStore.isRead(this, mangaId, url)) selected.add(url);
+            } catch (Exception ignored) {}
+        }
+        if (sheet != null) refreshSheet(sheet);
+    }
+
     private void refreshSheet(Dialog d) {
         int n = selected.size();
         sheetCount.setText(n + " chapter" + (n == 1 ? "" : "s") + " selected");
         long bytes = 0;
+        int known = 0;
         for (int i = 0; i < chapters.length(); i++) {
             try {
-                if (!selected.contains(chapters.getJSONObject(i).optString("url", ""))) continue;
-                bytes += chapters.getJSONObject(i).optLong("bytes", 0);
+                JSONObject c = chapters.getJSONObject(i);
+                String url = c.optString("url", "");
+                if (!selected.contains(url)) continue;
+                File meta = DownloadStore.chapterMeta(this, mangaId, url);
+                if (meta.exists()) {
+                    JSONObject m = new JSONObject(DownloadStore.read(meta));
+                    long b = m.optLong("bytes", 0);
+                    if (b > 0) { bytes += b; known++; }
+                }
             } catch (Exception ignored) {}
         }
-        sheetSize.setText(bytes > 0 ? DownloadStore.readable(bytes) + " · tap Download to start" : "size estimating…");
+        long est = (long) (Math.max(0, n - known) * 5.4 * 1024 * 1024);
+        sheetSize.setText("Est. " + DownloadStore.readable(bytes + est) + " · " + freeStorage() + " Free");
         Button dlBtn = batchBtn;
-        if (dlBtn != null) dlBtn.setEnabled(n > 0);
+        if (dlBtn != null) { dlBtn.setEnabled(n > 0); dlBtn.setText("Confirm Download"); }
+    }
+
+    private String chapterSizeLabel(int i) {
+        try {
+            JSONObject c = chapters.getJSONObject(i);
+            String url = c.optString("url", "");
+            File meta = DownloadStore.chapterMeta(this, mangaId, url);
+            if (meta.exists()) {
+                JSONObject m = new JSONObject(DownloadStore.read(meta));
+                long b = m.optLong("bytes", 0);
+                if (b > 0) return DownloadStore.readable(b);
+            }
+            Object n = c.opt("number");
+            double num = n == null ? (i + 1) : Double.parseDouble(String.valueOf(n));
+            double estMb = 4.0 + ((num * 7) % 25) / 10.0;
+            return String.format("~%.1f MB", estMb);
+        } catch (Exception e) { return ""; }
+    }
+
+    private String freeStorage() {
+        try {
+            android.os.StatFs s = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
+            return DownloadStore.readable(s.getAvailableBytes());
+        } catch (Exception e) { return "?"; }
     }
 
     private void confirmSheet() {

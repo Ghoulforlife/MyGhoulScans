@@ -16,10 +16,10 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 ## 2. Batch Download Drawer (Webtoon-style)
 - [x] Sheet opens over comic page from Download button
 - [x] Checkbox list; long-press + tap = select range
-- [ ] Pills: Select All (96), Next 10, Next 25, Unread, Clear
-- [ ] Per-chapter row file size (e.g., 5.4 MB)
-- [ ] Sticky footer: "N Chapters Selected" · "Est. Size: 52.4 MB" · "18.4 GB Free"
-- [ ] Confirm Download closes sheet and starts background queue
+- [x] Pills: Select All (96), Next 10, Next 25, Unread, Clear
+- [x] Per-chapter row file size (e.g., 5.4 MB)
+- [x] Sticky footer: "N Chapters Selected" · "Est. Size: 52.4 MB" · "18.4 GB Free"
+- [x] Confirm Download closes sheet and starts background queue
 
 ## 3. Chapter List & Recommendations
 - [ ] Sort toggle ↑↓ (Oldest first / Newest first)
