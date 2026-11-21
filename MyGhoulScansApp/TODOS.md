@@ -22,9 +22,9 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Confirm Download closes sheet and starts background queue
 
 ## 3. Chapter List & Recommendations
-- [ ] Sort toggle ↑↓ (Oldest first / Newest first)
-- [ ] Preview first 3–5 chapters + "Show All 96 Chapters ⌄"
-- [ ] Inline status icons per chapter: ✓ downloaded, ring/pause downloading, ↓ available
+- [x] Sort toggle ↑↓ (Oldest first / Newest first)
+- [x] Preview first 3–5 chapters + "Show All 96 Chapters ⌄"
+- [x] Inline status icons per chapter: ✓ downloaded, ↓ available (queued/downloading state pending)
 - [ ] "More like this" horizontal carousel: 20+ recs, genre-matched, ratings, 1-tap bookmark
 
 ## 4. Downloads Tab

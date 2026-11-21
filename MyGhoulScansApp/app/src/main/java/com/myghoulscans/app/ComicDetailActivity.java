@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.ViewGroup;
+import android.view.View;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -39,6 +40,9 @@ public class ComicDetailActivity extends AppCompatActivity {
     private boolean descExpanded;
     private String resumeUrl = "";
     private int resumePage = 0;
+    private boolean newestFirst = false;
+    private boolean showAllChapters = false;
+    private final java.util.Set<String> downloaded = new java.util.HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -167,10 +171,26 @@ public class ComicDetailActivity extends AppCompatActivity {
                 }
             }
             showProgress();
-            chapterList.removeAllViews();
-            for (int i = 0; i < chapters.length(); i++) {
-                try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
-            }
+            downloaded.clear();
+            try {
+                JSONArray titles = DownloadStore.listTitles(ComicDetailActivity.this);
+                for (int i = 0; i < titles.length(); i++) {
+                    JSONObject t = titles.optJSONObject(i);
+                    if (t == null || !mangaId.equals(t.optString("mangaId", ""))) continue;
+                    JSONArray cs = t.optJSONArray("chapters");
+                    if (cs == null) continue;
+                    for (int j = 0; j < cs.length(); j++) {
+                        JSONObject c = cs.optJSONObject(j);
+                        if (c != null) downloaded.add(c.optString("chapterUrl", c.optString("url", "")));
+                    }
+                }
+            } catch (Exception ignored) {}
+            Button sort = findViewById(R.id.chapterSort);
+            sort.setText(newestFirst ? "Oldest ↑" : "Newest ↓");
+            sort.setOnClickListener(x -> { newestFirst = !newestFirst; sort.setText(newestFirst ? "Oldest ↑" : "Newest ↓"); renderChapters(); });
+            Button showAll = findViewById(R.id.chapterShowAll);
+            showAll.setOnClickListener(x -> { showAllChapters = !showAllChapters; renderChapters(); });
+            renderChapters();
             Button readBtn = (Button) findViewById(R.id.detailRead);
             if (resumeIdx >= 0 && resumeUrl != null && !resumeUrl.isEmpty()) {
                 String num = "?";
@@ -222,6 +242,25 @@ public class ComicDetailActivity extends AppCompatActivity {
         }.execute();
     }
 
+    private void renderChapters() {
+        if (chapterList == null || chapters == null) return;
+        chapterList.removeAllViews();
+        int n = chapters.length();
+        int limit = showAllChapters ? n : Math.min(5, n);
+        for (int k = 0; k < limit; k++) {
+            int i = newestFirst ? (n - 1 - k) : k;
+            try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
+        }
+        Button sa = findViewById(R.id.chapterShowAll);
+        if (sa == null) return;
+        if (n > 5) {
+            sa.setVisibility(View.VISIBLE);
+            sa.setText(showAllChapters ? "Show Less ⌃" : "Show All " + n + " Chapters ⌄");
+        } else {
+            sa.setVisibility(View.GONE);
+        }
+    }
+
     private LinearLayout chapterRow(JSONObject c) {
         final String url = c.optString("url", "");
         String label = "Ch. " + (c.opt("number") == null ? "?" : c.opt("number"));
@@ -237,6 +276,14 @@ public class ComicDetailActivity extends AppCompatActivity {
         t.setEllipsize(android.text.TextUtils.TruncateAt.END);
         t.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         row.addView(t);
+
+        TextView st = new TextView(this);
+        boolean isDl = downloaded.contains(url);
+        st.setText(isDl ? "✓" : "↓");
+        st.setTextColor(isDl ? 0xFF2ECC71 : 0xFF979BA8);
+        st.setTextSize(13);
+        st.setPadding(6, 0, 6, 0);
+        row.addView(st);
 
         Button read = new Button(this);
         read.setText("Read");
