@@ -33,6 +33,10 @@ public class ComicDetailActivity extends AppCompatActivity {
     private TextView sheetCount, sheetSize;
     private Button batchBtn;
     private boolean bookmarked;
+    private JSONArray genres;
+    private boolean descExpanded;
+    private String resumeUrl = "";
+    private int resumePage = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,13 +85,49 @@ public class ComicDetailActivity extends AppCompatActivity {
                         final String t = d.optString("title", title);
                         final String c = d.optString("cover", cover);
                         final String s = d.optString("source", "");
+                        final String st = d.optString("status", "");
                         final String desc = d.optString("description", "");
+                        final JSONArray gs = d.optJSONArray("genres");
+                        genres = gs;
                         runOnUiThread(() -> {
                             title = t; cover = c;
                             ((TextView) findViewById(R.id.detailTitle)).setText(t);
                             ((TextView) findViewById(R.id.detailTopTitle)).setText(t);
-                            ((TextView) findViewById(R.id.detailSource)).setText(s);
-                            ((TextView) findViewById(R.id.detailDesc)).setText(desc);
+                            String src = s;
+                            if (!st.isEmpty()) src = (src.isEmpty() ? "" : src + " · ") + prettyStatus(st);
+                            ((TextView) findViewById(R.id.detailSource)).setText(src);
+                            final TextView dsc = (TextView) findViewById(R.id.detailDesc);
+                            dsc.setText(desc);
+                            dsc.setMaxLines(3);
+                            Button more = findViewById(R.id.detailMore);
+                            more.setText("More ⌄");
+                            more.setOnClickListener(v -> {
+                                descExpanded = !descExpanded;
+                                dsc.setMaxLines(descExpanded ? Integer.MAX_VALUE : 3);
+                                more.setText(descExpanded ? "Less ⌃" : "More ⌄");
+                            });
+                            LinearLayout pills = findViewById(R.id.detailGenres);
+                            pills.removeAllViews();
+                            if (gs != null) {
+                                for (int i = 0; i < gs.length(); i++) {
+                                    final String g = gs.optString(i, "");
+                                    if (g.isEmpty()) continue;
+                                    Button b = new Button(ComicDetailActivity.this);
+                                    b.setText(g);
+                                    b.setTextSize(11);
+                                    b.setAllCaps(false);
+                                    b.setTextColor(0xFFBBBBBB);
+                                    b.setBackgroundResource(R.drawable.mgs_card);
+                                    b.setPadding(Views.dp(ComicDetailActivity.this, 8), Views.dp(ComicDetailActivity.this, 4),
+                                            Views.dp(ComicDetailActivity.this, 8), Views.dp(ComicDetailActivity.this, 4));
+                                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                                            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                                    lp.rightMargin = Views.dp(ComicDetailActivity.this, 6);
+                                    b.setLayoutParams(lp);
+                                    b.setOnClickListener(v -> Toast.makeText(ComicDetailActivity.this, g, Toast.LENGTH_SHORT).show());
+                                    pills.addView(b);
+                                }
+                            }
                             if (c != null && !c.isEmpty())
                                 Glide.with(ComicDetailActivity.this).load(c).placeholder(R.mipmap.ic_launcher)
                                         .into((ImageView) findViewById(R.id.detailCover));
@@ -111,9 +151,11 @@ public class ComicDetailActivity extends AppCompatActivity {
                         try {
                             JSONObject p = pr.getJSONObject(i);
                             if (mangaId.equals(p.optString("manga_id", ""))) {
+                                resumeUrl = p.optString("chapter_id", "");
+                                resumePage = p.optInt("page", 0);
                                 for (int j = 0; j < chapters.length(); j++) {
                                     try {
-                                        if (chapters.getJSONObject(j).optString("url", "").equals(p.optString("chapter_id", ""))) { resumeIdx = j; break; }
+                                        if (chapters.getJSONObject(j).optString("url", "").equals(resumeUrl)) { resumeIdx = j; break; }
                                     } catch (Exception ignored) {}
                                 }
                                 break;
@@ -127,9 +169,20 @@ public class ComicDetailActivity extends AppCompatActivity {
             for (int i = 0; i < chapters.length(); i++) {
                 try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
             }
-            findViewById(R.id.detailRead).setOnClickListener(click -> {
+            Button readBtn = (Button) findViewById(R.id.detailRead);
+            if (resumeIdx >= 0 && resumeUrl != null && !resumeUrl.isEmpty()) {
+                String num = "?";
+                try { Object n = chapters.getJSONObject(resumeIdx).opt("number"); num = n == null ? "?" : String.valueOf(n); } catch (Exception ignored) {}
+                readBtn.setText("Continue Ch. " + num);
+            } else {
+                readBtn.setText("Read First");
+            }
+            readBtn.setOnClickListener(click -> {
                 if (chapters.length() == 0) { Toast.makeText(ComicDetailActivity.this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
-                try { openOnline(chapters.getJSONObject(0).optString("url", "")); } catch (Exception ignored) {}
+                String url = (resumeIdx >= 0 && resumeUrl != null && !resumeUrl.isEmpty())
+                        ? resumeUrl
+                        : chapters.optJSONObject(0).optString("url", "");
+                openOnline(url);
             });
             findViewById(R.id.detailBookmark).setOnClickListener(click -> toggleBookmark());
             findViewById(R.id.detailDownloadAll).setOnClickListener(click -> openSheet());
@@ -412,5 +465,17 @@ public class ComicDetailActivity extends AppCompatActivity {
 
     private static String q(String s) {
         try { return ApiClient.q(s); } catch (Exception e) { return ""; }
+    }
+
+    private static String prettyStatus(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String t = s.replace('_', ' ').replace('-', ' ').trim();
+        StringBuilder out = new StringBuilder();
+        for (String w : t.split("\\s+")) {
+            if (w.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1).toLowerCase());
+        }
+        return out.toString();
     }
 }

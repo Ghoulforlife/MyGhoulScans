@@ -38,7 +38,19 @@
 
             <TextView android:id="@+id/detailDesc" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:textColor="#FFBBBBBB" android:textSize="13sp" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:maxLines="4" android:ellipsize="end" />
+                android:maxLines="3" android:ellipsize="end" />
+
+            <Button android:id="@+id/detailMore" android:layout_width="wrap_content" android:layout_height="34dp"
+                android:text="More ⌄" android:textSize="12sp" android:textColor="@color/mgs_accent"
+                android:background="?android:attr/selectableItemBackground" android:layout_marginStart="14dp"
+                android:layout_marginTop="2dp" android:paddingStart="4dp" android:paddingEnd="4dp" />
+
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:scrollbars="none" android:layout_marginTop="8dp">
+                <LinearLayout android:id="@+id/detailGenres" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:paddingStart="14dp" android:paddingEnd="14dp" />
+            </HorizontalScrollView>
 
             <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="14dp" android:paddingStart="16dp" android:paddingEnd="16dp">
