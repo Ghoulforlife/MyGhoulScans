@@ -189,12 +189,16 @@ public class DownloadsActivity extends Activity {
 
         head.setClickable(true);
         head.setOnClickListener(v -> {
-            if (!expanded.add(mangaId)) expanded.remove(mangaId);
-            render();
+            if (manage) {
+                if (!expanded.add(mangaId)) expanded.remove(mangaId);
+                render();
+                return;
+            }
+            openComic(mangaId, title);
         });
         card.addView(head);
 
-        if (expanded.contains(mangaId) && chapters != null) {
+        if ((manage || expanded.contains(mangaId)) && chapters != null) {
             for (int i = 0; i < chapters.length(); i++) {
                 try { card.addView(chapterRow(mangaId, chapters.getJSONObject(i), cf)); }
                 catch (Exception ignored) {}
@@ -312,4 +316,13 @@ public class DownloadsActivity extends Activity {
 
     @Override
     public void onBackPressed() { Nav.home(this); }
+
+    /** Tapping a downloaded comic opens its chapter list screen (no inline dropdown). */
+    private void openComic(String mangaId, String title) {
+        Intent i = new Intent(this, ComicDetailActivity.class);
+        i.putExtra("id", mangaId);
+        i.putExtra("title", title);
+        i.putExtra("cover", "");
+        startActivity(i);
+    }
 }
