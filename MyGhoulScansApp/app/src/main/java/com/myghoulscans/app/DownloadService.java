@@ -30,6 +30,11 @@ public class DownloadService extends Service {
     private static final int NOTIF_ID = 1001;
     private static final String CHANNEL = "mgs_downloads";
 
+    /** Live state for the Downloads screen monitor. */
+    public static volatile String curTitle = "", curChapter = "";
+    public static volatile int curProgress = -1;
+    public static volatile long curSpeed = 0;
+
     @Override
     public void onCreate() { super.onCreate(); makeChannel(); }
 
@@ -90,7 +95,7 @@ public class DownloadService extends Service {
         return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    private void saveImage(String url, File dest) throws Exception {
+    private long saveImage(String url, File dest) throws Exception {
         if (url.startsWith("/")) {
             String u = url.startsWith("/api/") ? url.substring(4) : url;
             url = DownloadStore.WORKER + u;
@@ -105,9 +110,44 @@ public class DownloadService extends Service {
         if (code < 200 || code >= 300) { c.disconnect(); throw new Exception("Image HTTP " + code); }
         InputStream in = c.getInputStream();
         FileOutputStream out = new FileOutputStream(dest);
-        byte[] buf = new byte[8192]; int n;
-        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        byte[] buf = new byte[8192]; int n; long total = 0;
+        while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); total += n; }
         out.close(); in.close(); c.disconnect();
+        return total;
+    }
+
+    /** Parallel page fetch (4 workers) — returns bytes downloaded; retries a failed chapter once. */
+    private long downloadPages(JSONArray pages, File dir) throws Exception {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            java.util.concurrent.atomic.AtomicLong bytes = new java.util.concurrent.atomic.AtomicLong();
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+            List<java.util.concurrent.Future<?>> fs = new ArrayList<>();
+            final int count = pages.length();
+            for (int j = 0; j < count; j++) {
+                final int idx = j;
+                final Object item = pages.get(j);
+                fs.add(pool.submit(() -> {
+                    String u = item instanceof String ? (String) item : ((JSONObject) item).optString("url", "");
+                    if (u.isEmpty()) return 0L;
+                    try { return saveImage(u, new File(dir, String.format("%04d.jpg", idx + 1))); }
+                    catch (Exception e) { return 0L; }
+                }));
+            }
+            pool.shutdown();
+            int saved = 0;
+            for (java.util.concurrent.Future<?> f : fs) {
+                try {
+                    Long b = (Long) f.get();
+                    long v = b == null ? 0L : b;
+                    if (v > 0) { saved++; bytes.addAndGet(v); }
+                } catch (Exception ignored) {}
+            }
+            if (saved >= count) return bytes.get();
+            // incomplete — wipe and retry once (corrupt-file recovery)
+            File[] kids = dir.listFiles();
+            if (kids != null) for (File k : kids) k.delete();
+        }
+        return 0L;
     }
 
     private static double chapterNum(JSONObject c) {
@@ -131,6 +171,19 @@ public class DownloadService extends Service {
             throw new Exception("Sign in required");
         }
 
+        // Wi-Fi-only rule (opt-in setting).
+        if (getSharedPreferences("mgs", MODE_PRIVATE).getBoolean("wifi_only", false)) {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean wifi = cm != null && cm.getActiveNetworkInfo() != null
+                    && cm.getActiveNetworkInfo().getType() == android.net.ConnectivityManager.TYPE_WIFI;
+            if (!wifi) {
+                show("Wi-Fi only", "Connect to Wi-Fi to download (or turn off Wi-Fi only in More).", 0);
+                curProgress = -1;
+                curChapter = "";
+                return;
+            }
+        }
+
         JSONObject titleMeta = new JSONObject();
         titleMeta.put("mangaId", mangaId);
         titleMeta.put("title", title);
@@ -148,35 +201,41 @@ public class DownloadService extends Service {
         for (int i = 0; i < chaptersIn.length(); i++) chapters.add(chaptersIn.getJSONObject(i));
         Collections.sort(chapters, (a, b) -> Double.compare(chapterNum(a), chapterNum(b)));
         int total = chapters.size();
+        curTitle = title;
+        curProgress = 0;
         for (int i = 0; i < total; i++) {
             JSONObject ch = chapters.get(i);
             String curl = ch.optString("url", "");
             if (curl.isEmpty()) continue;
             String label = ch.optString("label", "Ch. " + ch.optString("num", "?"));
-            show("Downloading " + title, label + " (" + (i + 1) + "/" + total + ")", (i * 100) / total);
+            curChapter = label;
+            curProgress = (i * 100) / total;
+            show("Downloading " + title, label + " (" + (i + 1) + "/" + total + ")", curProgress);
 
             String pagesJson = get(DownloadStore.WORKER + "/comick/pages?url=" + URLEncoder.encode(curl, "UTF-8"), null);
             JSONArray pages = new JSONObject(pagesJson).optJSONArray("data");
             if (pages == null || pages.length() == 0) continue;
 
             File dir = DownloadStore.chapterDir(this, mangaId, curl);
-            int saved = 0;
-            for (int j = 0; j < pages.length(); j++) {
-                Object item = pages.get(j);
-                String u = item instanceof String ? (String) item : ((JSONObject) item).optString("url", "");
-                if (u.isEmpty()) continue;
-                try { saveImage(u, new File(dir, String.format("%04d.jpg", j + 1))); saved++; }
-                catch (Exception ignored) {}
-            }
+            long t0 = System.currentTimeMillis();
+            long bytes = downloadPages(pages, dir);
+            long dt = Math.max(1, System.currentTimeMillis() - t0);
+            curSpeed = bytes * 1000 / dt;
+
             JSONObject cm = new JSONObject();
             cm.put("mangaId", mangaId);
             cm.put("chapterUrl", curl);
             cm.put("label", label);
-            cm.put("pages", saved);
+            cm.put("pages", pages.length());
+            cm.put("bytes", bytes);
             cm.put("time", System.currentTimeMillis());
             DownloadStore.write(DownloadStore.chapterMeta(this, mangaId, curl), cm.toString());
         }
+        curProgress = 100;
+        curSpeed = 0;
         show("Downloads complete", title + " · " + total + " chapter(s)", 100);
+        curProgress = -1;
+        curChapter = "";
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }

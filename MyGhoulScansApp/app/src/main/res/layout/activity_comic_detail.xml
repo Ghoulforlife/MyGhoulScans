@@ -82,6 +82,16 @@
                 android:text="Show All Chapters ⌄" android:textSize="13sp" android:textColor="@color/mgs_accent"
                 android:background="@drawable/mgs_card" android:layout_marginStart="12dp" android:layout_marginEnd="12dp"
                 android:layout_marginTop="6dp" android:visibility="gone" android:layout_marginBottom="10dp" />
+
+            <TextView android:text="More like this" android:textColor="@color/white" android:textSize="18sp"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="16dp" android:paddingTop="18dp" android:paddingBottom="6dp" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:scrollbars="none" android:paddingStart="6dp" android:paddingEnd="6dp">
+                <LinearLayout android:id="@+id/detailRecs" android:orientation="horizontal"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </HorizontalScrollView>
+            <View android:layout_width="match_parent" android:layout_height="14dp" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

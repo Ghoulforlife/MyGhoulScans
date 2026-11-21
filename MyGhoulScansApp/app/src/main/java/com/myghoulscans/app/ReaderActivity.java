@@ -27,14 +27,16 @@ public class ReaderActivity extends Activity {
     private final Handler autoHandler = new Handler();
     private boolean auto, pageMode;
     private int brightness = 100, page = 0, pageCount = 0;
+    private int autoSpeed = 1;
+    private boolean eyeCare = false;
     private String prevChapter, nextChapter;
     private final Runnable autoScroll = new Runnable() {
         @Override public void run() {
             if (!auto) return;
-            web.evaluateJavascript("window.scrollBy(0,4)", null);
+            web.evaluateJavascript("window.scrollBy(0," + (4 * autoSpeed) + ")", null);
             syncProgress(page);
             if (pageMode && page >= pageCount - 1) { auto = false; stopAuto(); goNext(); return; }
-            autoHandler.postDelayed(this, 40);
+            autoHandler.postDelayed(this, Math.max(10, 40 / autoSpeed));
         }
     };
 
@@ -66,14 +68,27 @@ public class ReaderActivity extends Activity {
             if (pageMode) syncProgress(page);
         });
         findViewById(R.id.readerAuto).setOnClickListener(v -> {
+            Button b = (Button) v;
             if (auto) stopAuto();
-            else { auto = true; ((Button) v).setText("Stop"); autoHandler.post(autoScroll); }
+            else { auto = true; b.setText("Stop " + autoSpeed + "x"); autoHandler.post(autoScroll); }
+        });
+        findViewById(R.id.readerAuto).setOnLongClickListener(v -> {
+            autoSpeed = (autoSpeed % 3) + 1;
+            Button b = (Button) v;
+            b.setText(auto ? "Stop " + autoSpeed + "x" : "Auto " + autoSpeed + "x");
+            return true;
         });
         findViewById(R.id.readerBright).setOnClickListener(v -> {
             brightness = brightness == 100 ? 75 : brightness == 75 ? 50 : 100;
             ((Button) v).setText("☀ " + brightness);
             View overlay = getWindow().getDecorView();
             overlay.setAlpha(brightness / 100f);
+        });
+        findViewById(R.id.readerBright).setOnLongClickListener(v -> {
+            eyeCare = !eyeCare;
+            View ov = findViewById(R.id.eyeOverlay);
+            if (ov != null) ov.setVisibility(eyeCare ? View.VISIBLE : View.GONE);
+            return true;
         });
         findViewById(R.id.readerPreload).setOnClickListener(v -> preloadNext());
         findViewById(R.id.readerBack).setOnClickListener(v -> {
@@ -158,7 +173,7 @@ public class ReaderActivity extends Activity {
         auto = false;
         autoHandler.removeCallbacks(autoScroll);
         Button b = findViewById(R.id.readerAuto);
-        if (b != null) b.setText("Auto");
+        if (b != null) b.setText("Auto " + autoSpeed + "x");
     }
 
     /** Push reading progress + read-count to the website so the cloud stays in sync. */

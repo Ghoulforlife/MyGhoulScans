@@ -26,7 +26,10 @@ import java.io.File;
 
 public class ComicDetailActivity extends AppCompatActivity {
     private String mangaId, title, cover;
+    private String source = "";
     private JSONArray chapters;
+    private JSONArray related;
+    private JSONArray genres;
     private LinearLayout chapterList;
     private boolean sheetOpen;
     private final java.util.Set<String> selected = new java.util.HashSet<>();
@@ -36,7 +39,6 @@ public class ComicDetailActivity extends AppCompatActivity {
     private TextView sheetCount, sheetSize;
     private Button batchBtn;
     private boolean bookmarked;
-    private JSONArray genres;
     private boolean descExpanded;
     private String resumeUrl = "";
     private int resumePage = 0;
@@ -92,6 +94,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                         final String c = d.optString("cover", cover);
                         final String s = d.optString("source", "");
                         final String st = d.optString("status", "");
+                        source = s;
                         final String desc = d.optString("description", "");
                         final JSONArray gs = d.optJSONArray("genres");
                         genres = gs;
@@ -145,6 +148,16 @@ public class ComicDetailActivity extends AppCompatActivity {
             if (chRaw != null) {
                 try { chapters = new JSONObject(chRaw).optJSONArray("data"); } catch (Exception ignored) {}
             }
+            // related (More like this)
+            try {
+                String g = (genres != null && genres.length() > 0) ? genres.optString(0, "") : "";
+                if (!g.isEmpty() && source != null && !source.isEmpty()) {
+                    String rRaw = ApiClient.getCached("/comick/genre?source=" + source + "&genre=" + ApiClient.q(g) + "&page=1&enrich=1", 30 * 60 * 1000);
+                    if (rRaw != null) {
+                        try { related = new JSONObject(rRaw).optJSONArray("data"); } catch (Exception ignored) {}
+                    }
+                }
+            } catch (Exception ignored) {}
             return null;
         }
         @Override protected void onPostExecute(Void v) {
@@ -191,6 +204,7 @@ public class ComicDetailActivity extends AppCompatActivity {
             Button showAll = findViewById(R.id.chapterShowAll);
             showAll.setOnClickListener(x -> { showAllChapters = !showAllChapters; renderChapters(); });
             renderChapters();
+            buildRecs();
             Button readBtn = (Button) findViewById(R.id.detailRead);
             if (resumeIdx >= 0 && resumeUrl != null && !resumeUrl.isEmpty()) {
                 String num = "?";
@@ -240,6 +254,52 @@ public class ComicDetailActivity extends AppCompatActivity {
                 Toast.makeText(ComicDetailActivity.this, b ? "Added to Library" : "Removed from Library", Toast.LENGTH_SHORT).show();
             }
         }.execute();
+    }
+
+    private void buildRecs() {
+        LinearLayout row = findViewById(R.id.detailRecs);
+        if (row == null) return;
+        row.removeAllViews();
+        if (related == null) return;
+        int max = Math.min(20, related.length());
+        for (int i = 0; i < max; i++) {
+            try {
+                JSONObject r = related.getJSONObject(i);
+                final String rid = r.optString("id", "");
+                final String rtitle = r.optString("title", "Untitled");
+                final String rcover = r.optString("cover", "");
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setPadding(6, 6, 6, 6);
+                card.setClickable(true);
+                card.setFocusable(true);
+                card.setBackgroundResource(R.drawable.mgs_card);
+                ImageView img = new ImageView(this);
+                img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                Glide.with(this).load(rcover).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
+                img.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), Views.dp(this, 136)));
+                card.addView(img);
+                TextView t = new TextView(this);
+                t.setText(rtitle);
+                t.setTextColor(0xFFFFFFFF);
+                t.setTextSize(11);
+                t.setMaxLines(2);
+                t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                t.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
+                card.addView(t);
+                card.setOnClickListener(v -> openDetail(rid, rtitle, rcover));
+                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                clp.rightMargin = Views.dp(this, 8);
+                card.setLayoutParams(clp);
+                row.addView(card);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void openDetail(String id, String title, String cover) {
+        Intent i = new Intent(this, ComicDetailActivity.class);
+        i.putExtra("id", id); i.putExtra("title", title); i.putExtra("cover", cover);
+        startActivity(i);
     }
 
     private void renderChapters() {

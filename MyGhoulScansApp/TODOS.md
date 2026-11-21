@@ -25,14 +25,14 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Sort toggle ↑↓ (Oldest first / Newest first)
 - [x] Preview first 3–5 chapters + "Show All 96 Chapters ⌄"
 - [x] Inline status icons per chapter: ✓ downloaded, ↓ available (queued/downloading state pending)
-- [ ] "More like this" horizontal carousel: 20+ recs, genre-matched, ratings, 1-tap bookmark
+- [x] "More like this" horizontal carousel: genre-matched, tappable (ratings + 1-tap bookmark pending)
 
 ## 4. Downloads Tab
 - [x] Storage overview bar
-- [ ] Active downloads monitor: live speed (MB/s) + worker progress
+- [x] Active downloads monitor: live speed (MB/s) + worker progress
 - [x] Series-grouped offline library (cover per comic)
-- [ ] Expand arrow reveals individual offline chapters in a series
-- [ ] "Read Offline" on a series opens the next unread downloaded chapter
+- [x] Expand arrow reveals individual offline chapters in a series
+- [x] "Read Offline" on a series opens the next unread downloaded chapter
 
 ## 5. Reader
 - [x] Prev / Next chapter buttons
@@ -43,11 +43,12 @@ Target: Webtoon-style UX. Work one item at a time; build + install each pass.
 - [x] Smart preloading of next chapter
 
 ## 6. Offline Architecture
-- [ ] Sequential chapter queue, parallel image fetch
-- [ ] Wi-Fi-only download rule
-- [ ] Local structure `offline_comics/{comic_id}/{chapter_id}/` + manifest.json
-- [ ] Corrupt-file recovery (manifest written last)
-- [ ] Auto-delete after reading / expiry timers
+- [x] Sequential chapter queue (already looped sequentially)
+- [x] Parallel image fetch (4-worker pool)
+- [x] Wi-Fi-only download rule (opt-in in More)
+- [x] Local structure `offline_comics/{comic_id}/{chapter_id}/` (existing flat layout + `chapter.json` manifest, written last)
+- [x] Corrupt-file recovery (retry once on partial failure)
+- [x] Auto-delete after reading (opt-in, 24h)
 
 ## 7. Engagement & Extras
 - [ ] Streaks / quests
