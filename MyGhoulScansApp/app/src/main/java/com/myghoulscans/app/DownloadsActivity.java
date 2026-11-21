@@ -215,14 +215,14 @@ public class DownloadsActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Views.dp(this, 8), Views.dp(this, 8), Views.dp(this, 6), Views.dp(this, 8));
+        row.setPadding(Views.dp(this, 5), Views.dp(this, 6), Views.dp(this, 3), Views.dp(this, 6));
         row.setBackgroundColor(0xFF23232B);
 
         ImageView thumb = new ImageView(this);
         thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
         if (coverFile.exists()) thumb.setImageBitmap(BitmapFactory.decodeFile(coverFile.getAbsolutePath()));
         else thumb.setImageResource(R.mipmap.ic_launcher);
-        thumb.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 28), Views.dp(this, 38)));
+        thumb.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 24), Views.dp(this, 32)));
         row.addView(thumb);
 
         LinearLayout mid = new LinearLayout(this);
@@ -233,31 +233,40 @@ public class DownloadsActivity extends Activity {
         name.setText(label);
         name.setTextColor(0xFFFFFFFF);
         name.setTextSize(13);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mid.addView(name);
         ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setProgress(pages > 0 ? 100 : 0);
         bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFE11D2E));
-        bar.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 90), Views.dp(this, 4)));
+        bar.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 50), Views.dp(this, 4)));
         mid.addView(bar);
         TextView meta = new TextView(this);
         meta.setText((pages > 0 ? "100%" : "0%") + " · " + DownloadStore.readable(c.optLong("bytes", 0)));
         meta.setTextColor(0xFF979BA8);
         meta.setTextSize(10);
+        meta.setSingleLine(true);
         mid.addView(meta);
         row.addView(mid);
 
-        TextView state = new TextView(this);
-        boolean read = DownloadStore.isRead(this, mangaId, curl);
-        state.setText(read ? "Read" : "Unread");
-        state.setTextColor(read ? 0xFF2ECC71 : 0xFF979BA8);
-        state.setTextSize(11);
-        row.addView(state);
+        if (!manage) {
+            TextView state = new TextView(this);
+            boolean read = DownloadStore.isRead(this, mangaId, curl);
+            state.setText(read ? "Read" : "Unread");
+            state.setTextColor(read ? 0xFF2ECC71 : 0xFF979BA8);
+            state.setTextSize(10);
+            state.setSingleLine(true);
+            row.addView(state);
+        }
 
         Button open = new Button(this);
         open.setText("Read");
-        open.setTextSize(11);
+        open.setTextSize(10);
         open.setAllCaps(false);
+        open.setMinWidth(0);
+        open.setMinimumWidth(0);
+        open.setPadding(Views.dp(this, 3), 0, Views.dp(this, 3), 0);
         open.setTextColor(0xFF2ECC71);
         open.setBackgroundResource(android.R.color.transparent);
         open.setOnClickListener(v -> {
@@ -271,7 +280,10 @@ public class DownloadsActivity extends Activity {
         if (manage) {
             Button del = new Button(this);
             del.setText("✕");
-            del.setTextSize(12);
+            del.setTextSize(11);
+            del.setMinWidth(0);
+            del.setMinimumWidth(0);
+            del.setPadding(Views.dp(this, 3), 0, Views.dp(this, 3), 0);
             del.setBackgroundResource(android.R.color.transparent);
             del.setOnClickListener(v -> {
                 DownloadStore.deleteChapter(this, mangaId, curl);
