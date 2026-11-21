@@ -49,7 +49,9 @@ public class MoreActivity extends Activity {
         name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         txt.addView(name);
         TextView sub = new TextView(this);
-        sub.setText(ApiClient.isSignedIn() ? "★ " + me.optInt("rp", 0) + " RP · account connected"
+        int streak = getSharedPreferences("mgs_read", MODE_PRIVATE).getInt("streak", 0);
+        sub.setText(ApiClient.isSignedIn()
+                ? "★ " + me.optInt("rp", 0) + " RP · " + streak + " day streak · connected"
                 : "Sign in to sync library & progress");
         sub.setTextColor(ApiClient.isSignedIn() ? 0xFFF1C40F : 0xFF979BA8);
         sub.setTextSize(12);
@@ -181,4 +183,7 @@ public class MoreActivity extends Activity {
         startActivity(new Intent(this, cls));
         finish();
     }
+
+    @Override
+    public void onBackPressed() { Nav.home(this); }
 }

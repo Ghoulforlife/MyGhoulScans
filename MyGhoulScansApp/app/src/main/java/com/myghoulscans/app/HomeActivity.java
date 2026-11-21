@@ -1,12 +1,15 @@
 package com.myghoulscans.app;
 
-import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Typeface;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,6 +24,7 @@ public class HomeActivity extends AppCompatActivity {
             "mecha", "psychological", "sports", "tragedy", "harem", "martial-arts", "isekai"
     };
     private JSONArray latest, popular, picks, recent, ongoing, romance, continueReading;
+    private JSONObject hero;
     private LinearLayout infiniteGrid;
     private TextView loadingMore;
     private static final int MAX_ROWS = 30;
@@ -45,61 +49,85 @@ public class HomeActivity extends AppCompatActivity {
 
     private class LoadTask extends AsyncTask<Void, Void, Void> {
         @Override protected Void doInBackground(Void... unused) {
-            try { latest = new JSONObject(ApiClient.get("/comick/latest?source=mangaread&enrich=1")).optJSONArray("data"); }
-            catch (Exception ignored) {}
-            try {
-                JSONObject home = new JSONObject(ApiClient.get("/comix/home"));
-                JSONObject d = home.optJSONObject("data");
-                if (d != null) popular = d.optJSONArray("trending");
-            } catch (Exception ignored) {}
-            try { picks = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=action&page=1&enrich=1")).optJSONArray("data"); }
-            catch (Exception ignored) {}
-            try { recent = new JSONObject(ApiClient.get("/comick/latest?source=flamecomics&enrich=1")).optJSONArray("data"); }
-            catch (Exception ignored) {}
-            try { ongoing = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=fantasy&page=1&enrich=1")).optJSONArray("data"); }
-            catch (Exception ignored) {}
-            try { romance = new JSONObject(ApiClient.get("/comick/genre?source=mangaread&genre=romance&page=1&enrich=1")).optJSONArray("data"); }
-            catch (Exception ignored) {}
-            if (ApiClient.isSignedIn()) {
-                continueReading = new JSONArray();
+            // Cached GETs: first launch fetches, later launches are instant.
+            String raw = ApiClient.getCached("/comick/latest?source=mangaread&enrich=1", 10 * 60 * 1000);
+            if (raw != null) try { latest = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            raw = ApiClient.getCached("/comix/home", 10 * 60 * 1000);
+            if (raw != null) {
                 try {
-                    JSONArray ids = new JSONObject(ApiClient.get("/history")).optJSONArray("data");
-                    if (ids != null) {
-                        for (int i = 0; i < Math.min(6, ids.length()); i++) {
-                            String id = ids.optString(i, "");
-                            if (id.isEmpty()) continue;
-                            try {
-                                JSONObject t = new JSONObject(ApiClient.get("/comick/title?id=" + ApiClient.q(id))).optJSONObject("data");
-                                if (t != null) {
-                                    JSONObject c = new JSONObject();
-                                    c.put("id", id);
-                                    c.put("title", t.optString("title", "Untitled"));
-                                    c.put("cover", t.optString("cover", ""));
-                                    continueReading.put(c);
-                                }
-                            } catch (Exception ignored) {}
-                        }
-                    }
+                    JSONObject d = new JSONObject(raw).optJSONObject("data");
+                    if (d != null) popular = d.optJSONArray("trending");
                 } catch (Exception ignored) {}
             }
+            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=1&enrich=1", 10 * 60 * 1000);
+            if (raw != null) try { picks = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            raw = ApiClient.getCached("/comick/latest?source=flamecomics&enrich=1", 10 * 60 * 1000);
+            if (raw != null) try { recent = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=fantasy&page=1&enrich=1", 10 * 60 * 1000);
+            if (raw != null) try { ongoing = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=romance&page=1&enrich=1", 10 * 60 * 1000);
+            if (raw != null) try { romance = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+
+            if (ApiClient.isSignedIn()) {
+                JSONArray pr = ApiClient.progress();
+                continueReading = new JSONArray();
+                if (pr != null) {
+                    for (int i = 0; i < Math.min(3, pr.length()); i++) {
+                        try {
+                            JSONObject p = pr.getJSONObject(i);
+                            String id = p.optString("manga_id", "");
+                            if (id.isEmpty()) continue;
+                            String tRaw = ApiClient.getCached("/comick/title?id=" + ApiClient.q(id), 10 * 60 * 1000);
+                            JSONObject t = tRaw == null ? null : new JSONObject(tRaw).optJSONObject("data");
+                            JSONObject c = new JSONObject();
+                            c.put("id", id);
+                            c.put("title", t == null ? id : t.optString("title", "Untitled"));
+                            c.put("cover", t == null ? "" : t.optString("cover", ""));
+                            c.put("chapterLabel", p.optString("chapter_label", "Ch. ?"));
+                            c.put("page", p.optInt("page", 0));
+                            continueReading.put(c);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            if (continueReading != null && continueReading.length() > 0) hero = optObj(continueReading, 0);
+            else if (popular != null && popular.length() > 0) hero = optObj(popular, 0);
+            else if (latest != null && latest.length() > 0) hero = optObj(latest, 0);
             return null;
         }
 
         @Override protected void onPostExecute(Void v) {
-            fill(R.id.continueRow, continueReading);
-            fill(R.id.latestRow, latest);
-            fill(R.id.popularRow, popular);
-            fill(R.id.picksRow, picks);
-            fill(R.id.recentRow, recent);
-            fill(R.id.ongoingRow, ongoing);
-            fill(R.id.romanceRow, romance);
+            paintHero();
+            fill(R.id.continueRow, continueReading, true);
+            fill(R.id.latestRow, latest, false);
+            fill(R.id.popularRow, popular, false);
+            fill(R.id.picksRow, picks, false);
+            fill(R.id.recentRow, recent, false);
+            fill(R.id.ongoingRow, ongoing, false);
+            fill(R.id.romanceRow, romance, false);
             if (continueReading == null || continueReading.length() == 0)
-                findViewById(R.id.continueHead).setVisibility(android.view.View.GONE);
+                findViewById(R.id.continueHead).setVisibility(View.GONE);
             loadMore();
         }
     }
 
-    // Infinite feed: each page pulls 20 titles from the next genre in rotation.
+    private static JSONObject optObj(JSONArray a, int i) {
+        try { return a.getJSONObject(i); } catch (Exception e) { return null; }
+    }
+
+    private void paintHero() {
+        View banner = findViewById(R.id.heroBanner);
+        if (hero == null || banner == null) return;
+        banner.setVisibility(View.VISIBLE);
+        String title = hero.optString("title", "Untitled");
+        String sub = hero.optString("description", hero.optString("chapter_label", ""));
+        ((TextView) findViewById(R.id.heroTitle)).setText(title);
+        ((TextView) findViewById(R.id.heroSub)).setText(sub);
+        final String id = hero.optString("id", ""), cover = hero.optString("cover", "");
+        ((Button) findViewById(R.id.heroRead)).setOnClickListener(v -> open(id, title, cover));
+    }
+
+    // Infinite feed: each page pulls 10 titles from the next genre in rotation.
     private void loadMore() {
         long now = System.currentTimeMillis();
         if (loading || infiniteGrid == null || infiniteGrid.getChildCount() >= MAX_ROWS
@@ -111,11 +139,10 @@ public class HomeActivity extends AppCompatActivity {
         final String genre = GENRES[(myPage - 1) % GENRES.length];
         new AsyncTask<Void, Void, JSONArray>() {
             @Override protected JSONArray doInBackground(Void... unused) {
-                try {
-                    String path = "/comick/genre?source=mangaread&genre=" + genre
-                            + "&page=" + myPage + "&enrich=1";
-                    return new JSONObject(ApiClient.get(path)).optJSONArray("data");
-                } catch (Exception e) { return null; }
+                String raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=" + genre
+                        + "&page=" + myPage + "&enrich=1", 10 * 60 * 1000);
+                if (raw == null) return null;
+                try { return new JSONObject(raw).optJSONArray("data"); } catch (Exception e) { return null; }
             }
             @Override protected void onPostExecute(JSONArray arr) {
                 loading = false;
@@ -141,12 +168,12 @@ public class HomeActivity extends AppCompatActivity {
                 }
                 if (placed > 0) infiniteGrid.addView(row);
                 if (infiniteGrid.getChildCount() >= MAX_ROWS && loadingMore != null)
-                    loadingMore.setText("You're all caught up — 60 comics loaded!");
+                    loadingMore.setText("You're all caught up — that's all the comics!");
             }
         }.execute();
     }
 
-    private void fill(int id, JSONArray arr) {
+    private void fill(int id, JSONArray arr, boolean withProgress) {
         LinearLayout row = findViewById(id);
         if (row == null || arr == null) return;
         row.removeAllViews();
@@ -162,9 +189,28 @@ public class HomeActivity extends AppCompatActivity {
                     sub = ch == null ? "" : "Ch. " + ch;
                 }
                 final String fid = mid, ft = title, fc = cover;
-                row.addView(Views.card(this, mid, title, cover, sub, v -> open(fid, ft, fc)));
+                View card = Views.card(this, mid, title, cover, sub, v -> open(fid, ft, fc));
+                if (withProgress) addProgress(card, o);
+                row.addView(card);
             } catch (Exception ignored) {}
         }
+    }
+
+    private void addProgress(View card, JSONObject o) {
+        String label = o.optString("chapterLabel", "");
+        if (label.isEmpty()) return;
+        TextView t = new TextView(this);
+        t.setText(label + " · " + o.optInt("page", 0) + " pages read");
+        t.setTextColor(0xFF2ECC71);
+        t.setTextSize(10);
+        t.setPadding(4, 0, 4, 2);
+        ((ViewGroup) card).addView(t);
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgress(Math.min(90, 10 + o.optInt("page", 0)));
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFE11D2E));
+        bar.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), Views.dp(this, 3)));
+        ((ViewGroup) card).addView(bar);
     }
 
     private void open(String id, String title, String cover) {
@@ -174,4 +220,7 @@ public class HomeActivity extends AppCompatActivity {
         i.putExtra("cover", cover);
         startActivity(i);
     }
+
+    @Override
+    public void onBackPressed() { Nav.home(this); }
 }

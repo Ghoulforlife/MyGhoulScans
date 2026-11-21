@@ -82,7 +82,8 @@ final class DownloadStore {
     static String readable(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
-        return String.format("%.1f MB", bytes / (1024f * 1024f));
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024f * 1024f));
+        return String.format("%.2f GB", bytes / (1024f * 1024f * 1024f));
     }
 
     /** [ { mangaId, title, coverUrl, chapters:[{mangaId,chapterUrl,label,pages,bytes,time}] } ] */
@@ -135,8 +136,24 @@ final class DownloadStore {
     static void markRead(Context c, String mangaId, String chapterUrl) {
         String key = mangaId + "|" + chapterUrl;
         java.util.Set<String> set = new java.util.HashSet<>(readPrefs(c).getStringSet("chapters", new java.util.HashSet<String>()));
-        set.add(key);
-        readPrefs(c).edit().putStringSet("chapters", set).apply();
+        boolean first = set.add(key);
+        SharedPreferences.Editor e = readPrefs(c).edit().putStringSet("chapters", set);
+        if (first) {
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+            String last = readPrefs(c).getString("last_read_day", "");
+            if (!today.equals(last)) {
+                long diff = 0;
+                if (!last.isEmpty()) {
+                    try {
+                        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+                        diff = (f.parse(today).getTime() - f.parse(last).getTime()) / 86400000;
+                    } catch (Exception ignored) {}
+                }
+                int streak = diff == 1 ? readPrefs(c).getInt("streak", 0) + 1 : 1;
+                e.putInt("streak", Math.max(1, streak)).putString("last_read_day", today);
+            }
+        }
+        e.apply();
     }
 
     static boolean isRead(Context c, String mangaId, String chapterUrl) {

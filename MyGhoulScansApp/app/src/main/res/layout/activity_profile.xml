@@ -1,34 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:background="@color/mgs_bg">
-    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="52dp"
-        android:background="@color/mgs_panel" android:gravity="center_vertical" android:paddingStart="10dp">
-        <Button android:id="@+id/profileBack" android:layout_width="wrap_content" android:layout_height="40dp"
-            android:text="←" android:textSize="20sp" android:textColor="@color/white"
-            android:background="?android:attr/selectableItemBackground" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Profile"
-            android:textColor="@color/white" android:textSize="17sp" android:textStyle="bold" android:layout_marginStart="8dp" />
-    </LinearLayout>
-    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/mgs_bg" android:fillViewport="true">
+
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="44dp">
+            <Button android:id="@+id/profileBack" android:layout_width="wrap_content" android:layout_height="40dp"
+                android:text="←" android:textSize="20sp" android:textColor="@color/white"
+                android:background="?android:attr/selectableItemBackground" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Profile"
+                android:textColor="@color/white" android:textSize="17sp" android:textStyle="bold"
+                android:layout_marginStart="8dp" android:layout_gravity="center_vertical" />
+        </LinearLayout>
+
         <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:padding="16dp">
-            <LinearLayout android:id="@+id/profileCard" android:orientation="horizontal" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:background="@drawable/mgs_card" android:padding="16dp">
-                <ImageView android:id="@+id/profileAvatar" android:layout_width="60dp" android:layout_height="60dp"
+            android:background="@drawable/mgs_card" android:padding="16dp" android:layout_marginTop="8dp">
+            <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center_vertical">
+                <ImageView android:id="@+id/profileAvatar" android:layout_width="64dp" android:layout_height="64dp"
                     android:src="@mipmap/ic_launcher" android:contentDescription="Avatar" />
                 <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:layout_marginStart="14dp">
                     <TextView android:id="@+id/profileName" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="Reader" android:textColor="@color/white" android:textSize="18sp" android:textStyle="bold" />
+                        android:text="Reader" android:textColor="@color/white" android:textSize="19sp" android:textStyle="bold" />
                     <TextView android:id="@+id/profileEmail" android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:text="" android:textColor="@color/mgs_muted" android:textSize="12sp" />
-                    <TextView android:id="@+id/profileRp" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="0 RP" android:textColor="@color/mgs_accent" android:textSize="14sp" android:layout_marginTop="6dp" />
                 </LinearLayout>
             </LinearLayout>
-            <LinearLayout android:id="@+id/profileActions" android:orientation="vertical" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="18dp" />
+
+            <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+                <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_weight="1" android:gravity="center">
+                    <TextView android:id="@+id/statChapters" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="0" android:textColor="@color/white" android:textSize="20sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Chapters Read"
+                        android:textColor="@color/mgs_muted" android:textSize="10sp" />
+                </LinearLayout>
+                <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_weight="1" android:gravity="center">
+                    <TextView android:id="@+id/statStreak" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="0" android:textColor="@color/white" android:textSize="20sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Day Streak"
+                        android:textColor="@color/mgs_muted" android:textSize="10sp" />
+                </LinearLayout>
+                <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_weight="1" android:gravity="center">
+                    <TextView android:id="@+id/profileRp" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="0" android:textColor="@color/mgs_accent" android:textSize="20sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RP Points"
+                        android:textColor="@color/mgs_muted" android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+            <Button android:id="@+id/shopCta" android:layout_width="match_parent" android:layout_height="40dp"
+                android:text="RP Points" android:textSize="13sp" android:textColor="@color/white"
+                android:background="@drawable/mgs_accent_button" android:layout_marginTop="14dp" />
         </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+
+        <LinearLayout android:id="@+id/profileGrid" android:orientation="vertical" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:layout_marginTop="18dp" />
+    </LinearLayout>
+</ScrollView>

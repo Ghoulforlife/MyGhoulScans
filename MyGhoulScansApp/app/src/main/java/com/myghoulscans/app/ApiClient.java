@@ -3,6 +3,7 @@ package com.myghoulscans.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -13,15 +14,16 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
-/** Tiny JSON client for the site's Cloudflare worker API. */
+/** Tiny JSON client for the site's Cloudflare worker API, with disk caching. */
 final class ApiClient {
     static final String BASE = DownloadStore.WORKER;
-    private static SharedPreferences prefs;
+    private static SharedPreferences prefs, cache;
 
     private ApiClient() {}
 
     static void init(Context c) {
         if (prefs == null) prefs = c.getApplicationContext().getSharedPreferences("mgs", Context.MODE_PRIVATE);
+        if (cache == null) cache = c.getApplicationContext().getSharedPreferences("mgs_cache", Context.MODE_PRIVATE);
     }
 
     static String token() { return prefs == null ? "" : prefs.getString("token", ""); }
@@ -67,13 +69,61 @@ final class ApiClient {
 
     static String get(String path) throws Exception { return request("GET", path, null); }
 
+    /** Cached GET — serves cached JSON instantly, refreshing in the background. */
+    static String getCached(String path, long ttlMs) {
+        String key = "g:" + path;
+        if (cache != null) {
+            String hit = cache.getString(key, null);
+            long at = cache.getLong(key + ":t", 0);
+            if (hit != null && System.currentTimeMillis() - at < ttlMs) return hit;
+        }
+        try {
+            String text = get(path);
+            if (cache != null) {
+                cache.edit().putString(key, text).putLong(key + ":t", System.currentTimeMillis()).apply();
+            }
+            return text;
+        } catch (Exception e) {
+            if (cache != null) {
+                String stale = cache.getString(key, null);
+                if (stale != null) return stale;
+            }
+            return null;
+        }
+    }
+
     static String post(String path, String body) throws Exception { return request("POST", path, body); }
+    static String del(String path) throws Exception { return request("DELETE", path, null); }
+
+    static boolean isBookmarked(String id) {
+        try { return new JSONObject(get("/library/" + qOrEmpty(id) + "/status")).optBoolean("followed", false); }
+        catch (Exception e) { return false; }
+    }
+
+    static void bookmark(String id, boolean on) {
+        try {
+            if (on) post("/library/" + qOrEmpty(id), "{}");
+            else del("/library/" + qOrEmpty(id));
+        } catch (Exception ignored) {}
+    }
+
+    static JSONArray progress() {
+        try {
+            return new JSONObject(getCached("/progress", 30000)).optJSONArray("items");
+        } catch (Exception e) { return null; }
+    }
+
+    static JSONObject stats() {
+        try {
+            return new JSONObject(getCached("/auth/stats", 60000)).optJSONObject("stats");
+        } catch (Exception e) { return null; }
+    }
 
     private static String request(String method, String path, String body) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(BASE + path).openConnection();
         c.setRequestMethod(method);
-        c.setConnectTimeout(20000);
-        c.setReadTimeout(30000);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(20000);
         c.setRequestProperty("User-Agent", "MyGhoulScans/2.0 (Android)");
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("Referer", "https://ghoulforlife.github.io/");

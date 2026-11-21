@@ -32,7 +32,7 @@ public class LoginActivity extends Activity {
         errorView = findViewById(R.id.loginError);
         subtitle = findViewById(R.id.loginSubtitle);
 
-        findViewById(R.id.loginBack).setOnClickListener(v -> finish());
+        findViewById(R.id.loginBack).setOnClickListener(v -> Nav.home(this));
         tabLogin.setOnClickListener(v -> setMode(false));
         tabSignup.setOnClickListener(v -> setMode(true));
         submit.setOnClickListener(v -> submit());

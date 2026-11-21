@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
     android:background="@color/mgs_bg">
 
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
@@ -18,41 +16,50 @@
 
     <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
         <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:padding="16dp">
+            android:paddingBottom="16dp">
 
             <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-                <ImageView android:id="@+id/detailCover" android:layout_width="110dp" android:layout_height="150dp"
+                android:layout_height="wrap_content" android:padding="16dp">
+                <ImageView android:id="@+id/detailCover" android:layout_width="104dp" android:layout_height="144dp"
                     android:scaleType="centerCrop" android:contentDescription="Cover" />
                 <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:layout_marginStart="14dp">
                     <TextView android:id="@+id/detailTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:textColor="@color/white" android:textSize="19sp" android:textStyle="bold" />
+                        android:textColor="@color/white" android:textSize="18sp" android:textStyle="bold"
+                        android:maxLines="4" android:ellipsize="end" />
                     <TextView android:id="@+id/detailSource" android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:textColor="@color/mgs_muted" android:textSize="12sp" android:layout_marginTop="4dp" />
                     <TextView android:id="@+id/detailCount" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:textColor="@color/mgs_accent" android:textSize="13sp" android:layout_marginTop="8dp" />
+                        android:textColor="@color/mgs_accent" android:textSize="13sp" android:layout_marginTop="6dp" />
+                    <TextView android:id="@+id/detailProgress" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:textColor="#FF2ECC71" android:textSize="12sp" android:layout_marginTop="4dp" />
                 </LinearLayout>
             </LinearLayout>
 
             <TextView android:id="@+id/detailDesc" android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:textColor="#FFBBBBBB" android:textSize="13sp" android:layout_marginTop="14dp" android:maxLines="5" />
+                android:textColor="#FFBBBBBB" android:textSize="13sp" android:paddingStart="16dp" android:paddingEnd="16dp"
+                android:maxLines="4" android:ellipsize="end" />
 
             <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="14dp">
+                android:layout_height="wrap_content" android:layout_marginTop="14dp" android:paddingStart="16dp" android:paddingEnd="16dp">
                 <Button android:id="@+id/detailRead" android:layout_width="0dp" android:layout_weight="1"
-                    android:layout_height="44dp" android:text="Read first" android:textSize="13sp"
-                    android:textColor="@color/white" android:background="@color/mgs_accent" />
+                    android:layout_height="46dp" android:text="Read first" android:textSize="13sp"
+                    android:textColor="@color/white" android:background="@drawable/mgs_accent_button" />
+                <Button android:id="@+id/detailBookmark" android:layout_width="0dp" android:layout_weight="1"
+                    android:layout_height="46dp" android:text="☆ Bookmark" android:textSize="13sp"
+                    android:textColor="@color/white" android:background="@drawable/mgs_card"
+                    android:layout_marginStart="6dp" />
                 <Button android:id="@+id/detailDownloadAll" android:layout_width="0dp" android:layout_weight="1"
-                    android:layout_height="44dp" android:text="Download all" android:textSize="13sp"
-                    android:textColor="@color/white" android:background="@color/mgs_panel" />
+                    android:layout_height="46dp" android:text="↓ All" android:textSize="13sp"
+                    android:textColor="@color/white" android:background="@drawable/mgs_card"
+                    android:layout_marginStart="6dp" />
             </LinearLayout>
 
             <TextView android:id="@+id/chapterHead" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="Chapters" android:textColor="@color/white" android:textSize="18sp"
-                android:layout_marginTop="20dp" android:layout_marginBottom="8dp" />
+                android:layout_marginTop="20dp" android:paddingStart="16dp" android:paddingBottom="8dp" />
             <LinearLayout android:id="@+id/chapterList" android:orientation="vertical"
-                android:layout_width="match_parent" android:layout_height="wrap_content" />
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="12dp" android:paddingEnd="12dp" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

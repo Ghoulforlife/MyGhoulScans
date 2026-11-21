@@ -21,6 +21,7 @@ public class ComicDetailActivity extends AppCompatActivity {
     private String mangaId, title, cover;
     private JSONArray chapters;
     private LinearLayout chapterList;
+    private boolean bookmarked;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,44 +31,69 @@ public class ComicDetailActivity extends AppCompatActivity {
         mangaId = getIntent().getStringExtra("id");
         title = getIntent().getStringExtra("title");
         cover = getIntent().getStringExtra("cover");
-        if (mangaId == null) { finish(); return; }
+        if (mangaId == null) { Nav.home(this); return; }
         chapterList = findViewById(R.id.chapterList);
         ((TextView) findViewById(R.id.detailTitle)).setText(title);
         ((TextView) findViewById(R.id.detailTopTitle)).setText(title);
         if (cover != null && !cover.isEmpty())
             Glide.with(this).load(cover).placeholder(R.mipmap.ic_launcher).into((ImageView) findViewById(R.id.detailCover));
-        findViewById(R.id.detailBack).setOnClickListener(v -> finish());
+        findViewById(R.id.detailBack).setOnClickListener(v -> Nav.back(this, HomeActivity.class));
         new LoadTask().execute();
+        new BookmarkTask().execute();
+    }
+
+    @Override protected void onResume() { super.onResume(); new BookmarkTask().execute(); }
+
+    private class BookmarkTask extends AsyncTask<Void, Void, Boolean> {
+        @Override protected Boolean doInBackground(Void... unused) {
+            return ApiClient.isSignedIn() && ApiClient.isBookmarked(mangaId);
+        }
+        @Override protected void onPostExecute(Boolean b) { paintBookmark(b); }
+    }
+
+    private void paintBookmark(boolean on) {
+        bookmarked = on;
+        Button b = findViewById(R.id.detailBookmark);
+        if (b == null) return;
+        b.setText(on ? "★ In Library" : "☆ Bookmark");
+        b.setTextColor(on ? 0xFFFFFFFF : 0xFFFFFFFF);
     }
 
     private class LoadTask extends AsyncTask<Void, Void, Void> {
         @Override protected Void doInBackground(Void... unused) {
-            try {
-                JSONObject d = new JSONObject(ApiClient.get("/comick/title?id=" + ApiClient.q(mangaId))).optJSONObject("data");
-                if (d != null) {
-                    final String t = d.optString("title", title);
-                    final String c = d.optString("cover", cover);
-                    final String s = d.optString("source", "");
-                    final String desc = d.optString("description", "");
-                    runOnUiThread(() -> {
-                        title = t; cover = c;
-                        ((TextView) findViewById(R.id.detailTitle)).setText(t);
-                        ((TextView) findViewById(R.id.detailTopTitle)).setText(t);
-                        ((TextView) findViewById(R.id.detailSource)).setText(s);
-                        ((TextView) findViewById(R.id.detailDesc)).setText(desc);
-                        if (c != null && !c.isEmpty())
-                            Glide.with(ComicDetailActivity.this).load(c).placeholder(R.mipmap.ic_launcher)
-                                    .into((ImageView) findViewById(R.id.detailCover));
-                    });
-                }
-            } catch (Exception ignored) {}
-            try { chapters = new JSONObject(ApiClient.get("/comick/chapters?id=" + ApiClient.q(mangaId))).optJSONArray("data"); }
-            catch (Exception ignored) {}
+            String path = "/comick/title?id=" + q(mangaId);
+            String raw = ApiClient.getCached(path, 10 * 60 * 1000);
+            if (raw != null) {
+                try {
+                    JSONObject d = new JSONObject(raw).optJSONObject("data");
+                    if (d != null) {
+                        final String t = d.optString("title", title);
+                        final String c = d.optString("cover", cover);
+                        final String s = d.optString("source", "");
+                        final String desc = d.optString("description", "");
+                        runOnUiThread(() -> {
+                            title = t; cover = c;
+                            ((TextView) findViewById(R.id.detailTitle)).setText(t);
+                            ((TextView) findViewById(R.id.detailTopTitle)).setText(t);
+                            ((TextView) findViewById(R.id.detailSource)).setText(s);
+                            ((TextView) findViewById(R.id.detailDesc)).setText(desc);
+                            if (c != null && !c.isEmpty())
+                                Glide.with(ComicDetailActivity.this).load(c).placeholder(R.mipmap.ic_launcher)
+                                        .into((ImageView) findViewById(R.id.detailCover));
+                        });
+                    }
+                } catch (Exception ignored) {}
+            }
+            String chRaw = ApiClient.getCached("/comick/chapters?id=" + q(mangaId), 60 * 1000);
+            if (chRaw != null) {
+                try { chapters = new JSONObject(chRaw).optJSONArray("data"); } catch (Exception ignored) {}
+            }
             return null;
         }
         @Override protected void onPostExecute(Void v) {
             if (chapters == null) chapters = new JSONArray();
             ((TextView) findViewById(R.id.detailCount)).setText(chapters.length() + " chapters");
+            showProgress();
             chapterList.removeAllViews();
             for (int i = 0; i < chapters.length(); i++) {
                 try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
@@ -76,8 +102,40 @@ public class ComicDetailActivity extends AppCompatActivity {
                 if (chapters.length() == 0) { Toast.makeText(ComicDetailActivity.this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
                 try { openOnline(chapters.getJSONObject(0).optString("url", "")); } catch (Exception ignored) {}
             });
+            findViewById(R.id.detailBookmark).setOnClickListener(click -> toggleBookmark());
             findViewById(R.id.detailDownloadAll).setOnClickListener(click -> downloadAll());
         }
+    }
+
+    private void showProgress() {
+        if (!ApiClient.isSignedIn() || chapters == null || chapters.length() == 0) return;
+        JSONArray pr = ApiClient.progress();
+        if (pr == null) return;
+        for (int i = 0; i < pr.length(); i++) {
+            try {
+                JSONObject p = pr.getJSONObject(i);
+                if (mangaId.equals(p.optString("manga_id", ""))) {
+                    String label = p.optString("chapter_label", "Ch. ?");
+                    ((TextView) findViewById(R.id.detailProgress)).setText("Resume " + label);
+                    return;
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void toggleBookmark() {
+        if (!ApiClient.isSignedIn()) { Toast.makeText(this, "Sign in to bookmark", Toast.LENGTH_SHORT).show(); return; }
+        final boolean target = !bookmarked;
+        new AsyncTask<Void, Void, Boolean>() {
+            @Override protected Boolean doInBackground(Void... unused) {
+                ApiClient.bookmark(mangaId, target);
+                return target;
+            }
+            @Override protected void onPostExecute(Boolean b) {
+                paintBookmark(b);
+                Toast.makeText(ComicDetailActivity.this, b ? "Added to Library" : "Removed from Library", Toast.LENGTH_SHORT).show();
+            }
+        }.execute();
     }
 
     private LinearLayout chapterRow(JSONObject c) {
@@ -165,5 +223,9 @@ public class ComicDetailActivity extends AppCompatActivity {
             i.putExtra("url", url);
             startActivity(i);
         } catch (Exception ignored) {}
+    }
+
+    private static String q(String s) {
+        try { return ApiClient.q(s); } catch (Exception e) { return ""; }
     }
 }

@@ -34,7 +34,7 @@ public class BoardActivity extends Activity {
         String label = mode.equals("shop") ? "RP Shop" : mode.equals("discover") ? "Discover"
                 : mode.equals("popular") ? "Popular comics" : mode.equals("originals") ? "Originals" : "Leaderboard";
         title.setText(label);
-        findViewById(R.id.boardBack).setOnClickListener(v -> finish());
+        findViewById(R.id.boardBack).setOnClickListener(v -> Nav.back(this, HomeActivity.class));
         new AsyncTask<Void, Void, JSONObject>() {
             @Override protected JSONObject doInBackground(Void... unused) {
                 try {

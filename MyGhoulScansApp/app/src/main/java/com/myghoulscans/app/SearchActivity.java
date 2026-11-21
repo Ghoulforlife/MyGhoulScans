@@ -31,7 +31,7 @@ public class SearchActivity extends AppCompatActivity {
         Nav.attach(this, 1);
         input = findViewById(R.id.searchText);
         results = findViewById(R.id.searchResults);
-        findViewById(R.id.searchBack).setOnClickListener(v -> finish());
+        findViewById(R.id.searchBack).setOnClickListener(v -> Nav.home(this));
         findViewById(R.id.searchGo).setOnClickListener(v -> search());
         input.setOnEditorActionListener((v, actionId, event) -> { search(); return true; });
     }
@@ -111,4 +111,7 @@ public class SearchActivity extends AppCompatActivity {
         row.setLayoutParams(rp);
         return row;
     }
+
+    @Override
+    public void onBackPressed() { Nav.home(this); }
 }

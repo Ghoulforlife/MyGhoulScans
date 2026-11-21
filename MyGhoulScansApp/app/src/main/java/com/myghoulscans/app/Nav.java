@@ -25,11 +25,25 @@ final class Nav {
             b.setTextColor(ContextCompat.getColor(a,
                     i == active ? R.color.mgs_accent : R.color.mgs_muted));
             final int idx = i;
-            b.setOnClickListener(v -> {
-                if (idx == active) return;
-                a.startActivity(new Intent(a, TARGETS[idx]));
-                a.finish();
-            });
+            b.setOnClickListener(v -> go(a, TARGETS[idx]));
+        }
+    }
+
+    static void go(Activity a, Class<?> target) {
+        Intent i = new Intent(a, target);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        a.startActivity(i);
+        a.finish();
+    }
+
+    static void home(Activity a) { go(a, HomeActivity.class); }
+
+    /** Back arrow used on detail screens: always land on a real app screen, never exit. */
+    static void back(Activity a, Class<?> fallback) {
+        if (a.isTaskRoot() || a.getIntent() == null || a.getIntent().getExtras() == null) {
+            go(a, fallback == null ? HomeActivity.class : fallback);
+        } else {
+            a.finish();
         }
     }
 }

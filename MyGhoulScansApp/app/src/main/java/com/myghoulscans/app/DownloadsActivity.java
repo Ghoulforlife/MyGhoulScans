@@ -261,8 +261,8 @@ public class DownloadsActivity extends Activity {
         }
 
         Button open = new Button(this);
-        open.setText("Read");
-        open.setTextSize(10);
+        open.setText("Read Offline");
+        open.setTextSize(9);
         open.setAllCaps(false);
         open.setMinWidth(0);
         open.setMinimumWidth(0);
@@ -299,4 +299,7 @@ public class DownloadsActivity extends Activity {
         row.setLayoutParams(lp);
         return row;
     }
+
+    @Override
+    public void onBackPressed() { Nav.home(this); }
 }
