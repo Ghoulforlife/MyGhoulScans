@@ -263,15 +263,6 @@ public class DownloadsActivity extends Activity {
         right.addView(check);
         head.addView(right);
 
-        Button exp = new Button(this);
-        exp.setText(expanded.contains(mangaId) ? "⌃" : "⌄");
-        exp.setTextSize(14);
-        exp.setAllCaps(false);
-        exp.setTextColor(0xFFBBBBBB);
-        exp.setBackgroundResource(android.R.color.transparent);
-        exp.setOnClickListener(v -> { if (!expanded.add(mangaId)) expanded.remove(mangaId); render(); });
-        head.addView(exp);
-
         head.setClickable(true);
         head.setOnClickListener(v -> {
             if (manage) {
@@ -340,14 +331,8 @@ public class DownloadsActivity extends Activity {
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mid.addView(name);
-        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setMax(100);
-        bar.setProgress(pages > 0 ? 100 : 0);
-        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFE11D2E));
-        bar.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 50), Views.dp(this, 4)));
-        mid.addView(bar);
         TextView meta = new TextView(this);
-        meta.setText((pages > 0 ? "100%" : "0%") + " · " + DownloadStore.readable(c.optLong("bytes", 0)));
+        meta.setText(DownloadStore.readable(c.optLong("bytes", 0)));
         meta.setTextColor(0xFF979BA8);
         meta.setTextSize(10);
         meta.setSingleLine(true);

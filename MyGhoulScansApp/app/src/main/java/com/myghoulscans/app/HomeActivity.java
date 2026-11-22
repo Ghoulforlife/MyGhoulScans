@@ -24,7 +24,6 @@ public class HomeActivity extends AppCompatActivity {
             "mecha", "psychological", "sports", "tragedy", "harem", "martial-arts", "isekai"
     };
     private JSONArray latest, popular, picks, recent, ongoing, romance, continueReading;
-    private JSONObject hero;
     private LinearLayout infiniteGrid;
     private TextView loadingMore;
     private static final int MAX_ROWS = 30;
@@ -92,14 +91,10 @@ public class HomeActivity extends AppCompatActivity {
                     }
                 }
             }
-            if (continueReading != null && continueReading.length() > 0) hero = optObj(continueReading, 0);
-            else if (popular != null && popular.length() > 0) hero = optObj(popular, 0);
-            else if (latest != null && latest.length() > 0) hero = optObj(latest, 0);
             return null;
         }
 
         @Override protected void onPostExecute(Void v) {
-            paintHero();
             fill(R.id.continueRow, continueReading, true);
             fill(R.id.latestRow, latest, false);
             fill(R.id.popularRow, popular, false);
@@ -111,22 +106,6 @@ public class HomeActivity extends AppCompatActivity {
                 findViewById(R.id.continueHead).setVisibility(View.GONE);
             loadMore();
         }
-    }
-
-    private static JSONObject optObj(JSONArray a, int i) {
-        try { return a.getJSONObject(i); } catch (Exception e) { return null; }
-    }
-
-    private void paintHero() {
-        View banner = findViewById(R.id.heroBanner);
-        if (hero == null || banner == null) return;
-        banner.setVisibility(View.VISIBLE);
-        String title = hero.optString("title", "Untitled");
-        String sub = hero.optString("description", hero.optString("chapter_label", ""));
-        ((TextView) findViewById(R.id.heroTitle)).setText(title);
-        ((TextView) findViewById(R.id.heroSub)).setText(sub);
-        final String id = hero.optString("id", ""), cover = hero.optString("cover", "");
-        ((Button) findViewById(R.id.heroRead)).setOnClickListener(v -> open(id, title, cover));
     }
 
     // Infinite feed: each page pulls 10 titles from the next genre in rotation.
