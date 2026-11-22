@@ -78,10 +78,11 @@
             </LinearLayout>
             <LinearLayout android:id="@+id/chapterList" android:orientation="vertical"
                 android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="12dp" android:paddingEnd="12dp" />
-            <Button android:id="@+id/chapterShowAll" android:layout_width="match_parent" android:layout_height="40dp"
-                android:text="Show all chapters v" android:textSize="13sp" android:textColor="@color/mgs_accent"
-                android:background="@drawable/mgs_card" android:layout_marginStart="12dp" android:layout_marginEnd="12dp"
-                android:layout_marginTop="6dp" android:visibility="gone" android:layout_marginBottom="10dp" />
+            <Button android:id="@+id/chapterShowAll" android:layout_width="wrap_content" android:layout_height="34dp"
+                android:text="Show all chapters" android:textSize="12sp" android:textColor="@color/mgs_accent"
+                android:background="@drawable/mgs_card" android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp" android:visibility="gone" android:layout_marginBottom="10dp"
+                android:paddingStart="16dp" android:paddingEnd="16dp" />
 
             <TextView android:text="More like this" android:textColor="@color/white" android:textSize="18sp"
                 android:layout_width="match_parent" android:layout_height="wrap_content"

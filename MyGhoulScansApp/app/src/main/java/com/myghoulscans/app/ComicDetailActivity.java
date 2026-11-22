@@ -352,7 +352,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (sa == null) return;
         if (n > 5) {
             sa.setVisibility(View.VISIBLE);
-            sa.setText(showAllChapters ? "Show less ^" : "Show all " + n + " chapters v");
+            sa.setText(showAllChapters ? "Show less" : "Show all chapters (" + n + ")");
         } else {
             sa.setVisibility(View.GONE);
         }
@@ -389,35 +389,36 @@ public class ComicDetailActivity extends AppCompatActivity {
         String label = "Ch. " + (c.opt("number") == null ? "?" : c.opt("number"));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(10, 10, 10, 10);
-        row.setBackgroundColor(0xFF1C1C24);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(Views.dp(this, 12), Views.dp(this, 10), Views.dp(this, 8), Views.dp(this, 10));
+        row.setBackgroundResource(R.drawable.mgs_card);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.bottomMargin = Views.dp(this, 4);
+        row.setLayoutParams(rp);
+
         TextView t = new TextView(this);
-        t.setText(label + "  " + c.optString("title", ""));
-        t.setTextColor(0xFFFFFFFF);
-        t.setTextSize(14);
-        t.setMaxLines(1);
-        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        t.setText(label);
+        t.setTextColor(0xFFE11D2E);
+        t.setTextSize(13);
         t.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         row.addView(t);
 
-        TextView st = new TextView(this);
         boolean isDl = downloaded.contains(url);
+        TextView st = new TextView(this);
         st.setText(isDl ? "✓" : "↓");
         st.setTextColor(isDl ? 0xFF2ECC71 : 0xFF979BA8);
-        st.setTextSize(13);
-        st.setPadding(6, 0, 6, 0);
+        st.setTextSize(12);
+        st.setPadding(Views.dp(this, 6), 0, Views.dp(this, 6), 0);
         row.addView(st);
 
-        Button read = new Button(this);
-        read.setText("Read");
-        read.setTextSize(12);
-        read.setOnClickListener(v -> openOnline(url));
-        row.addView(read);
-
-        if (downloaded.contains(url)) {
+        if (isDl) {
             Button del = new Button(this);
             del.setText("x");
             del.setTextSize(12);
+            del.setTextColor(0xFFE11D2E);
+            del.setBackgroundResource(android.R.color.transparent);
+            del.setPadding(Views.dp(this, 4), 0, Views.dp(this, 4), 0);
             del.setOnClickListener(v -> {
                 DownloadStore.deleteChapter(this, mangaId, url);
                 downloaded.remove(url);
@@ -427,21 +428,14 @@ public class ComicDetailActivity extends AppCompatActivity {
             row.addView(del);
         }
 
-        Button dl = new Button(this);
-        dl.setText("↓");
-        dl.setTextSize(14);
-        dl.setOnClickListener(v -> {
-            if (!ApiClient.isSignedIn()) { Toast.makeText(this, "Sign in to download", Toast.LENGTH_SHORT).show(); return; }
+        row.setOnClickListener(v -> openOnline(url));
+        row.setOnLongClickListener(v -> {
+            if (!ApiClient.isSignedIn()) { Toast.makeText(this, "Sign in to download", Toast.LENGTH_SHORT).show(); return true; }
             JSONArray one = new JSONArray();
             one.put(chapterPayload(c));
             startDownload(one);
+            return true;
         });
-        row.addView(dl);
-
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rp.bottomMargin = 8;
-        row.setLayoutParams(rp);
         return row;
     }
 
