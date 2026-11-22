@@ -128,16 +128,51 @@ public class ReaderActivity extends Activity {
         findViewById(R.id.readerNext).setOnClickListener(v -> goNext());
     }
 
+    /** Load downloaded pages when available, otherwise stream the chapter from the API. */
     private void loadChapter(String manga, String chapter) {
         curManga = manga; mangaId = manga; chapterUrl = chapter;
         DownloadStore.markRead(this, manga, chapter);
+        prevChapter = null; nextChapter = null;
+        computeNav();                     // instant neighbours from downloaded chapters
+        computeNavOnline(manga, chapter); // exact neighbours from the full chapter list
+
+        List<String> urls = new ArrayList<>();
         File dir = DownloadStore.chapterDir(this, manga, chapter);
-        List<File> imgs = new ArrayList<>();
         File[] kids = dir.listFiles();
-        if (kids != null) for (File f : kids) if (f.isFile() && f.getName().endsWith(".jpg")) imgs.add(f);
-        if (imgs.isEmpty()) { Toast.makeText(this, "No saved pages", Toast.LENGTH_SHORT).show(); Nav.home(this); return; }
-        Collections.sort(imgs);
-        pageCount = imgs.size();
+        if (kids != null) for (File f : kids) if (f.isFile() && f.getName().endsWith(".jpg")) urls.add(Uri.fromFile(f).toString());
+        if (urls.isEmpty()) { loadOnlineChapter(manga, chapter); return; }
+        Collections.sort(urls); // file:// URIs sort by filename
+        renderPages(urls, dir);
+    }
+
+    /** Fetch pages for an online chapter — native reader, never a website bounce. */
+    private void loadOnlineChapter(final String manga, final String chapter) {
+        new Thread(() -> {
+            List<String> pages = new ArrayList<>();
+            try {
+                String raw = ApiClient.get("/comick/pages?url=" + ApiClient.q(chapter));
+                JSONArray d = new JSONObject(raw).optJSONArray("data");
+                if (d != null) for (int i = 0; i < d.length(); i++) {
+                    String u = d.optString(i, "");
+                    if (u.startsWith("http")) pages.add(u);
+                }
+            } catch (Exception ignored) {}
+            final List<String> found = pages;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (!manga.equals(mangaId) || !chapter.equals(chapterUrl)) return; // user moved on
+                if (found.isEmpty()) {
+                    Toast.makeText(this, "Could not load this chapter", Toast.LENGTH_SHORT).show();
+                    return; // stay in the reader — never kick back to Home
+                }
+                renderPages(found, null);
+            });
+        }).start();
+    }
+
+    /** Build the shared webtoon/page reader HTML from a list of page image URLs. */
+    private void renderPages(List<String> urls, File dir) {
+        pageCount = urls.size();
         page = 0;
         StringBuilder html = new StringBuilder("<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
                 .append("<style>html,body{margin:0;background:#000}img{display:block;width:100%;height:auto;margin:0 auto}"
@@ -145,8 +180,9 @@ public class ReaderActivity extends Activity {
                         + "body.pages img.on{display:block}</style></head><body"
                         + (pageMode ? " class=\"pages\"" : "") + ">");
         int idx = 0;
-        for (File f : imgs) {
-            html.append("<img data-page=\"").append(idx++).append("\" src=\"").append(Uri.fromFile(f).toString()).append("\">");
+        for (String u : urls) {
+            html.append("<img data-page=\"").append(idx++).append("\" src=\"")
+                    .append(u.replace("\"", "%22").replace("&", "&amp;")).append("\">");
         }
         html.append("<script>function setPage(n){var a=document.querySelectorAll('img');if(!a.length)return;"
                 + "page=Math.max(0,Math.min(a.length-1,n));for(var i=0;i<a.length;i++)a[i].className=(i===page?'on':'');"
@@ -161,18 +197,40 @@ public class ReaderActivity extends Activity {
                 + "if(right&&page>=n-1){if(window.MGS)try{MGS.edge(1)}catch(e){}return;}"
                 + "if(!right&&page<=0){if(window.MGS)try{MGS.edge(-1)}catch(e){}return;}"
                 + "setPage(right?page+1:page-1);},false);</script></body></html>");
-        File pageFile = new File(dir, "reader.html");
-        try { DownloadStore.write(pageFile, html.toString()); }
-        catch (Exception e) { Toast.makeText(this, "Cannot open chapter", Toast.LENGTH_SHORT).show(); Nav.home(this); return; }
-        web.loadUrl(Uri.fromFile(pageFile).toString());
-
-        prevChapter = null; nextChapter = null;
-        computeNav();
+        if (dir != null) {
+            File pageFile = new File(dir, "reader.html");
+            try { DownloadStore.write(pageFile, html.toString()); }
+            catch (Exception e) { Toast.makeText(this, "Cannot open chapter", Toast.LENGTH_SHORT).show(); return; }
+            web.loadUrl(Uri.fromFile(pageFile).toString());
+        } else {
+            web.loadDataWithBaseURL(ApiClient.BASE + "/", html.toString(), "text/html", "UTF-8", null);
+        }
         Button modeBtn = findViewById(R.id.readerMode);
         if (modeBtn != null) modeBtn.setText(pageMode ? "Scroll" : "Page");
         showChapter();
-
         syncProgress(0, true);
+    }
+
+    /** Exact prev/next from the whole chapter list — works for online chapters too. */
+    private void computeNavOnline(final String manga, final String chapter) {
+        new Thread(() -> {
+            try {
+                String raw = ApiClient.getCached("/comick/chapters?id=" + ApiClient.q(manga), 30000);
+                JSONArray arr = new JSONObject(raw).optJSONArray("data");
+                if (arr == null) return;
+                int at = -1;
+                for (int i = 0; i < arr.length(); i++) {
+                    try { if (chapter.equals(arr.getJSONObject(i).optString("url", ""))) { at = i; break; } }
+                    catch (Exception ignored) {}
+                }
+                if (at < 0) return;
+                final String pv = at > 0 ? arr.getJSONObject(at - 1).optString("url", "") : "";
+                final String nx = at < arr.length() - 1 ? arr.getJSONObject(at + 1).optString("url", "") : "";
+                runOnUiThread(() -> {
+                    if (manga.equals(mangaId) && chapter.equals(chapterUrl)) { prevChapter = pv; nextChapter = nx; }
+                });
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     /** Neighbouring chapters by exact position in the number-sorted download list. */

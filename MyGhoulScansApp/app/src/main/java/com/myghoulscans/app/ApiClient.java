@@ -109,7 +109,9 @@ final class ApiClient {
 
     static JSONArray progress() {
         try {
-            return new JSONObject(getCached("/progress", 30000)).optJSONArray("items");
+            // Never cache reading progress — a stale cache makes "Continue"
+            // show the wrong chapter right after reading.
+            return new JSONObject(get("/progress")).optJSONArray("items");
         } catch (Exception e) { return null; }
     }
 

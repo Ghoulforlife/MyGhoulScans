@@ -47,6 +47,7 @@ public class ComicDetailActivity extends AppCompatActivity {
     private boolean descExpanded;
     private String resumeUrl = "";
     private int resumePage = 0;
+    private JSONArray cloudProgress; // fetched off the main thread with the detail data
     private final java.util.Set<String> bookmarkedRecs = new java.util.HashSet<>();
     private boolean newestFirst = false;
     private boolean showAllChapters = false;
@@ -115,11 +116,14 @@ public class ComicDetailActivity extends AppCompatActivity {
                             final TextView dsc = (TextView) findViewById(R.id.detailDesc);
                             dsc.setText(desc);
                             dsc.setMaxLines(3);
+                            dsc.setEllipsize(android.text.TextUtils.TruncateAt.END);
                             Button more = findViewById(R.id.detailMore);
+                            more.setVisibility(desc.isEmpty() ? View.GONE : View.VISIBLE);
                             more.setText("More v");
                             more.setOnClickListener(v -> {
                                 descExpanded = !descExpanded;
                                 dsc.setMaxLines(descExpanded ? Integer.MAX_VALUE : 3);
+                                dsc.setEllipsize(descExpanded ? null : android.text.TextUtils.TruncateAt.END);
                                 more.setText(descExpanded ? "Less ^" : "More v");
                             });
                             LinearLayout pills = findViewById(R.id.detailGenres);
@@ -155,18 +159,39 @@ public class ComicDetailActivity extends AppCompatActivity {
             if (chRaw != null) {
                 try { chapters = new JSONObject(chRaw).optJSONArray("data"); } catch (Exception ignored) {}
             }
-            // related (More like this)
+            // Cloud progress must be read off the UI thread (real network call).
+            if (ApiClient.isSignedIn()) cloudProgress = ApiClient.progress();
+            // related (More like this) — try every genre slugified
+            // ("Martial Arts" → martial-arts), source by source, so the row
+            // is never empty.
             try {
-                String g = (genres != null && genres.length() > 0) ? genres.optString(0, "") : "";
+                java.util.List<String> slugs = new java.util.ArrayList<>();
+                if (genres != null) {
+                    for (int i = 0; i < genres.length(); i++) {
+                        String g = genres.optString(i, "");
+                        String slug = g.trim().toLowerCase().replaceAll("\\s+", "-").replaceAll("[^a-z0-9-]", "");
+                        if (!slug.isEmpty() && !slugs.contains(slug)) slugs.add(slug);
+                    }
+                }
+                if (slugs.isEmpty()) slugs.add("action");
                 String[] srcs = new String[] { source, "mangaread" };
+                outer:
                 for (String src : srcs) {
-                    if (g.isEmpty() || src == null || src.isEmpty()) continue;
-                    String rRaw = ApiClient.getCached("/comick/genre?source=" + src + "&genre=" + ApiClient.q(g) + "&page=1&enrich=1", 30 * 60 * 1000);
-                    if (rRaw != null) {
+                    if (src == null || src.isEmpty()) continue;
+                    for (String slug : slugs) {
+                        String rRaw = ApiClient.getCached("/comick/genre?source=" + src + "&genre=" + slug + "&page=1&enrich=1", 30 * 60 * 1000);
+                        if (rRaw == null) continue;
                         try {
                             JSONArray d = new JSONObject(rRaw).optJSONArray("data");
-                            if (d != null && d.length() > 0) { related = d; break; }
+                            if (d != null && d.length() > 0) { related = d; break outer; }
                         } catch (Exception ignored) {}
+                    }
+                }
+                // Last resort: the always-populated action list.
+                if (related == null || related.length() == 0) {
+                    String rRaw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=1&enrich=1", 30 * 60 * 1000);
+                    if (rRaw != null) {
+                        try { related = new JSONObject(rRaw).optJSONArray("data"); } catch (Exception ignored) {}
                     }
                 }
             } catch (Exception ignored) {}
@@ -176,8 +201,8 @@ public class ComicDetailActivity extends AppCompatActivity {
             if (isFinishing() || isDestroyed()) return;
             if (chapters == null) chapters = new JSONArray();
             ((TextView) findViewById(R.id.detailCount)).setText(chapters.length() + " chapters");
-            if (ApiClient.isSignedIn()) {
-                JSONArray pr = ApiClient.progress();
+            if (cloudProgress != null) {
+                JSONArray pr = cloudProgress;
                 if (pr != null) {
                     for (int i = 0; i < pr.length(); i++) {
                         try {
@@ -239,9 +264,8 @@ public class ComicDetailActivity extends AppCompatActivity {
     }
 
     private void showProgress() {
-        if (!ApiClient.isSignedIn() || chapters == null || chapters.length() == 0) return;
-        JSONArray pr = ApiClient.progress();
-        if (pr == null) return;
+        if (cloudProgress == null || chapters == null || chapters.length() == 0) return;
+        JSONArray pr = cloudProgress;
         for (int i = 0; i < pr.length(); i++) {
             try {
                 JSONObject p = pr.getJSONObject(i);
@@ -279,6 +303,7 @@ public class ComicDetailActivity extends AppCompatActivity {
             try {
                 JSONObject r = related.getJSONObject(i);
                 final String rid = r.optString("id", "");
+                if (rid.isEmpty() || rid.equals(mangaId)) continue;
                 final String rtitle = r.optString("title", "Untitled");
                 final String rcover = r.optString("cover", "");
                 LinearLayout card = new LinearLayout(this);
@@ -355,7 +380,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (sa == null) return;
         if (n > 5) {
             sa.setVisibility(View.VISIBLE);
-            sa.setText(showAllChapters ? "Show less" : "Show all chapters (" + n + ")");
+            sa.setText(showAllChapters ? "Show less" : "See all (" + n + ")");
         } else {
             sa.setVisibility(View.GONE);
         }
