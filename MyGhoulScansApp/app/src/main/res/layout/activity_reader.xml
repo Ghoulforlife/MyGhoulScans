@@ -42,8 +42,8 @@
             android:text="☀ 100" android:textSize="10sp" android:textColor="@color/white"
             android:background="?android:attr/selectableItemBackground" />
 
-        <Button android:id="@+id/readerPreload" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="Preload" android:textSize="10sp" android:textColor="@color/white"
+        <Button android:id="@+id/readerChapters" android:layout_width="0dp" android:layout_weight="1.4" android:layout_height="match_parent"
+            android:text="CHP 1/1" android:textSize="9sp" android:textColor="@color/white"
             android:background="?android:attr/selectableItemBackground" />
 
         <Button android:id="@+id/readerNext" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"

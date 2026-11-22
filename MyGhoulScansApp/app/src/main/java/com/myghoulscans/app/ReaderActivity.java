@@ -10,6 +10,8 @@ import android.view.View;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,7 +26,9 @@ import java.util.List;
 /** Offline reader: webtoon / page mode, auto-scroll, brightness, next/prev chapter. */
 public class ReaderActivity extends Activity {
     private WebView web;
-    private String curManga, mangaId, chapterUrl;
+    private String curManga, mangaId, chapterUrl, returnTitle, returnCover;
+    private JSONArray allChapters;
+    private int chapterTotal = 0, chapterPos = -1;
     private final Handler autoHandler = new Handler();
     private boolean auto, pageMode;
     private int brightness = 100, page = 0, pageCount = 0;
@@ -48,7 +52,17 @@ public class ReaderActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_reader);
-        if (getIntent().getStringExtra("mangaId") == null) { Nav.home(this); return; }
+        // If Android recreated us after the app was backgrounded (e.g. while
+        // the user read a notification), fall back to the last saved chapter.
+        android.content.SharedPreferences last = getSharedPreferences("mgs_reader", MODE_PRIVATE);
+        String mid = getIntent().getStringExtra("mangaId");
+        String curl = getIntent().getStringExtra("chapterUrl");
+        if (mid == null) { mid = last.getString("mangaId", null); curl = last.getString("chapterUrl", null); }
+        if (mid == null) { Nav.home(this); return; }
+        returnTitle = getIntent().getStringExtra("returnTitle");
+        returnCover = getIntent().getStringExtra("returnCover");
+        if (returnTitle == null || returnTitle.isEmpty()) returnTitle = last.getString("title", "");
+        if (returnCover == null || returnCover.isEmpty()) returnCover = last.getString("cover", "");
         web = findViewById(R.id.readerWeb);
         WebSettings s = web.getSettings();
         s.setAllowFileAccess(true);
@@ -82,7 +96,7 @@ public class ReaderActivity extends Activity {
             }
         }, "MGS");
 
-        loadChapter(getIntent().getStringExtra("mangaId"), getIntent().getStringExtra("chapterUrl"));
+        loadChapter(mid, curl);
 
         ((Button) findViewById(R.id.readerMode)).setOnClickListener(v -> {
             pageMode = !pageMode;
@@ -117,22 +131,96 @@ public class ReaderActivity extends Activity {
             if (ov != null) ov.setVisibility(eyeCare ? View.VISIBLE : View.GONE);
             return true;
         });
-        findViewById(R.id.readerPreload).setOnClickListener(v -> preloadNext());
-        findViewById(R.id.readerBack).setOnClickListener(v -> {
-            Intent i = new Intent(this, DownloadsActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            startActivity(i);
-            finish();
-        });
+        findViewById(R.id.readerChapters).setOnClickListener(v -> showChapterPicker());
+        updateChapterButton();
+        findViewById(R.id.readerBack).setOnClickListener(v -> backToComic());
         findViewById(R.id.readerPrev).setOnClickListener(v -> goPrev());
         findViewById(R.id.readerNext).setOnClickListener(v -> goNext());
+    }
+
+    /** Remember the exact chapter even if Android kills the app while it's backgrounded. */
+    private void rememberReader(int pg) {
+        try {
+            getSharedPreferences("mgs_reader", MODE_PRIVATE).edit()
+                    .putString("mangaId", mangaId == null ? "" : mangaId)
+                    .putString("chapterUrl", chapterUrl == null ? "" : chapterUrl)
+                    .putString("title", returnTitle == null ? "" : returnTitle)
+                    .putString("cover", returnCover == null ? "" : returnCover)
+                    .putInt("page", Math.max(0, pg)).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** Back returns to the comic page this reader was opened from. */
+    private void backToComic() {
+        Intent i = new Intent(this, ComicDetailActivity.class);
+        i.putExtra("id", mangaId);
+        i.putExtra("title", returnTitle == null || returnTitle.isEmpty() ? "Comic" : returnTitle);
+        i.putExtra("cover", returnCover == null ? "" : returnCover);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(i);
+        finish();
+    }
+
+    private void updateChapterButton() {
+        Button b = findViewById(R.id.readerChapters);
+        if (b == null) return;
+        int cur = chapterPos >= 0 ? chapterPos + 1 : (int) Math.max(1, numberFromUrl(chapterUrl));
+        b.setText("CHP " + cur + "/" + (chapterTotal > 0 ? String.valueOf(chapterTotal) : "?"));
+    }
+
+    /** Scrollable list of every chapter, opened from the CHP x/y nav button. */
+    private void showChapterPicker() {
+        if (allChapters == null || allChapters.length() == 0) {
+            Toast.makeText(this, "Chapter list is still loading", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        builder.setTitle("Chapters");
+        ScrollView sv = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Views.dp(this, 12);
+        box.setPadding(pad, pad, pad, pad);
+        final android.app.AlertDialog[] dialog = new android.app.AlertDialog[1];
+        for (int i = 0; i < allChapters.length(); i++) {
+            final JSONObject c = allChapters.optJSONObject(i);
+            if (c == null) continue;
+            final String url = c.optString("url", "");
+            if (url.isEmpty()) continue;
+            Object num = c.opt("number");
+            String number = num == null ? String.valueOf(i + 1) : String.valueOf(num);
+            String label = "Ch. " + number;
+            String title = c.optString("title", "").trim();
+            // "Chapter 5" is redundant next to "Ch. 5" — show it only when
+            // the source supplied a real chapter title.
+            if (!title.isEmpty() && !title.equalsIgnoreCase("Chapter " + number)
+                    && !title.equalsIgnoreCase(label)) label += " <" + title + ">";
+            TextView row = new TextView(this);
+            row.setText(label);
+            row.setTextSize(14);
+            row.setPadding(pad, Views.dp(this, 9), pad, Views.dp(this, 9));
+            boolean here = url.equals(chapterUrl);
+            row.setTextColor(here ? 0xFFE11D2E : 0xFFFFFFFF);
+            row.setBackgroundColor(here ? 0xFF3A141B : 0xFF1C1C24);
+            row.setOnClickListener(v -> {
+                dialog[0].dismiss();
+                loadChapter(mangaId, url);
+            });
+            box.addView(row);
+        }
+        sv.addView(box);
+        builder.setView(sv);
+        builder.setNegativeButton("Close", null);
+        dialog[0] = builder.show();
     }
 
     /** Load downloaded pages when available, otherwise stream the chapter from the API. */
     private void loadChapter(String manga, String chapter) {
         curManga = manga; mangaId = manga; chapterUrl = chapter;
+        rememberReader(0);
         DownloadStore.markRead(this, manga, chapter);
         prevChapter = null; nextChapter = null;
+        chapterPos = -1;
         computeNav();                     // instant neighbours from downloaded chapters
         computeNavOnline(manga, chapter); // exact neighbours from the full chapter list
 
@@ -223,11 +311,17 @@ public class ReaderActivity extends Activity {
                     try { if (chapter.equals(arr.getJSONObject(i).optString("url", ""))) { at = i; break; } }
                     catch (Exception ignored) {}
                 }
-                if (at < 0) return;
+                final int pos = at, total = arr.length();
+                allChapters = arr;
                 final String pv = at > 0 ? arr.getJSONObject(at - 1).optString("url", "") : "";
                 final String nx = at < arr.length() - 1 ? arr.getJSONObject(at + 1).optString("url", "") : "";
                 runOnUiThread(() -> {
-                    if (manga.equals(mangaId) && chapter.equals(chapterUrl)) { prevChapter = pv; nextChapter = nx; }
+                    if (!manga.equals(mangaId) || !chapter.equals(chapterUrl)) return;
+                    chapterTotal = total;
+                    chapterPos = pos;
+                    updateChapterButton();
+                    prevChapter = pv;
+                    nextChapter = nx;
                 });
             } catch (Exception ignored) {}
         }).start();
@@ -348,6 +442,7 @@ public class ReaderActivity extends Activity {
     /** @param force bypass the 4s throttle — used on chapter changes so quick
      *  next/prev (and auto-advance) still saves where the reader is. */
     private void syncProgress(final int pg, final boolean force) {
+        rememberReader(pg);
         if (!ApiClient.isSignedIn()) return;
         final String manga = mangaId, chapter = chapterUrl;
         final long now = System.currentTimeMillis();
@@ -406,10 +501,5 @@ public class ReaderActivity extends Activity {
 
     @Override protected void onPause() { syncProgress(page, true); super.onPause(); }
     @Override protected void onDestroy() { stopAuto(); pillHandler.removeCallbacks(hidePill); super.onDestroy(); }
-    @Override public void onBackPressed() {
-        Intent i = new Intent(this, DownloadsActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(i);
-        finish();
-    }
+    @Override public void onBackPressed() { backToComic(); }
 }

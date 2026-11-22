@@ -74,7 +74,14 @@ public class ComicDetailActivity extends AppCompatActivity {
         loadRecBookmarks();
     }
 
-    @Override protected void onResume() { super.onResume(); new BookmarkTask().execute(); loadRecBookmarks(); }
+    @Override protected void onResume() {
+        super.onResume();
+        new BookmarkTask().execute();
+        loadRecBookmarks();
+        // Returning from the reader reuses this screen (SINGLE_TOP), so refresh
+        // the resume chapter and CTA from the cloud instead of showing stale data.
+        if (chapters != null && chapters.length() > 0) new LoadTask().execute();
+    }
 
     /** Load the signed-in user's library once so every recommendation star
      *  starts in the correct (filled or empty) state. */
@@ -232,13 +239,41 @@ public class ComicDetailActivity extends AppCompatActivity {
                             if (mangaId.equals(p.optString("manga_id", ""))) {
                                 resumeUrl = p.optString("chapter_id", "");
                                 resumePage = p.optInt("page", 0);
+                                String resumeLabel = p.optString("chapter_label", "");
                                 for (int j = 0; j < chapters.length(); j++) {
                                     try {
                                         if (chapters.getJSONObject(j).optString("url", "").equals(resumeUrl)) { resumeIdx = j; break; }
                                     } catch (Exception ignored) {}
                                 }
+                                // URLs can differ slightly between feeds — fall back to
+                                // matching the saved chapter number.
+                                if (resumeIdx < 0) {
+                                    double want = firstNum(resumeLabel);
+                                    if (want <= 0) want = firstNum(resumeUrl);
+                                    for (int j = 0; j < chapters.length() && want > 0; j++) {
+                                        try {
+                                            JSONObject cj = chapters.getJSONObject(j);
+                                            double got = firstNum(String.valueOf(cj.opt("number")));
+                                            if (got <= 0) got = firstNum(cj.optString("url", ""));
+                                            if (got == want) { resumeUrl = cj.optString("url", ""); resumeIdx = j; break; }
+                                        } catch (Exception ignored) {}
+                                    }
+                                }
                                 break;
                             }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            // Last resort: the chapter stored locally by the reader. This keeps
+            // the app on the same chapter if it was killed while backgrounded.
+            if (resumeIdx < 0) {
+                android.content.SharedPreferences lr = getSharedPreferences("mgs_reader", MODE_PRIVATE);
+                if (mangaId.equals(lr.getString("mangaId", ""))) {
+                    String last = lr.getString("chapterUrl", "");
+                    for (int j = 0; j < chapters.length(); j++) {
+                        try {
+                            if (chapters.getJSONObject(j).optString("url", "").equals(last)) { resumeUrl = last; resumeIdx = j; break; }
                         } catch (Exception ignored) {}
                     }
                 }
@@ -283,6 +318,14 @@ public class ComicDetailActivity extends AppCompatActivity {
             findViewById(R.id.detailBookmark).setOnClickListener(click -> toggleBookmark());
             findViewById(R.id.detailDownloadAll).setOnClickListener(click -> openSheet());
         }
+    }
+
+    /** First number in a label/URL — used only as a resume-matching fallback. */
+    private static double firstNum(String s) {
+        if (s == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)").matcher(s);
+        if (!m.find()) return 0;
+        try { return Double.parseDouble(m.group(1)); } catch (Exception e) { return 0; }
     }
 
     private void showProgress() {
@@ -337,7 +380,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                 ImageView img = new ImageView(this);
                 img.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 Glide.with(getApplicationContext()).load(ApiClient.imgUrl(rcover)).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
-                img.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), Views.dp(this, 136)));
+                img.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 124), Views.dp(this, 168)));
                 card.addView(img);
                 TextView t = new TextView(this);
                 t.setText(rtitle);
@@ -345,16 +388,17 @@ public class ComicDetailActivity extends AppCompatActivity {
                 t.setTextSize(11);
                 t.setMaxLines(2);
                 t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                t.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
+                t.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 124), ViewGroup.LayoutParams.WRAP_CONTENT));
                 card.addView(t);
                 LinearLayout meta = new LinearLayout(this);
                 meta.setOrientation(LinearLayout.HORIZONTAL);
-                meta.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
+                meta.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                meta.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 124), ViewGroup.LayoutParams.WRAP_CONTENT));
                 TextView rt = new TextView(this);
                 String chapterCount = recCounts.containsKey(rid) ? recCounts.get(rid) : recCountOf(r);
                 rt.setText(chapterCount.isEmpty() ? "Ch. …" : "Ch. " + chapterCount);
                 rt.setTextColor(0xFF979BA8);
-                rt.setTextSize(10);
+                rt.setTextSize(9);
                 rt.setSingleLine(true);
                 rt.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 meta.addView(rt);
@@ -797,6 +841,8 @@ public class ComicDetailActivity extends AppCompatActivity {
             Intent i = new Intent(this, ReaderActivity.class);
             i.putExtra("mangaId", mangaId);
             i.putExtra("chapterUrl", chapterUrl);
+            i.putExtra("returnTitle", title);
+            i.putExtra("returnCover", cover);
             startActivity(i);
         } catch (Exception ignored) {}
     }

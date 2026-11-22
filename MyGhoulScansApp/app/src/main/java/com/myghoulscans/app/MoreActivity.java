@@ -107,10 +107,10 @@ public class MoreActivity extends Activity {
             catch (Exception ignored) {}
         });
         row("ℹ", "About MyGhoulScans", () ->
-                Toast.makeText(this, "MyGhoulScans v4.0 — free, ad-free reader", Toast.LENGTH_SHORT).show());
+                Toast.makeText(this, "MyGhoulScans v4.1 — free, ad-free reader", Toast.LENGTH_SHORT).show());
 
         TextView footer = new TextView(this);
-        footer.setText("MyGhoulScans · v4.0");
+        footer.setText("MyGhoulScans · v4.1");
         footer.setTextColor(0xFF666672);
         footer.setTextSize(11);
         footer.setGravity(android.view.Gravity.CENTER);

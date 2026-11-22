@@ -129,6 +129,7 @@ public class ChapterListActivity extends Activity {
                     Intent intent = new Intent(this, ReaderActivity.class);
                     intent.putExtra("mangaId", mangaId);
                     intent.putExtra("chapterUrl", curl);
+                    intent.putExtra("returnTitle", title);
                     startActivity(intent);
                 });
                 row.addView(open);

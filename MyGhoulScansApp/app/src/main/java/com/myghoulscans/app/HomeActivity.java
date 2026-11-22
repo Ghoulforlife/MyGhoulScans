@@ -32,6 +32,7 @@ public class HomeActivity extends AppCompatActivity {
     private long lastLoadAt = 0;
     private int gridCols = 2;
     private final java.util.HashSet<String> seen = new java.util.HashSet<>();
+    private final java.util.HashSet<String> bookmarkedIds = new java.util.HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,6 +92,14 @@ public class HomeActivity extends AppCompatActivity {
             }
 
             if (ApiClient.isSignedIn()) {
+                // Library ids drive the bookmark star shown on every card.
+                try {
+                    JSONArray ids = new JSONObject(ApiClient.get("/library")).optJSONArray("mangaIds");
+                    if (ids != null) for (int k = 0; k < ids.length(); k++) {
+                        String s = ids.optString(k, "");
+                        if (!s.isEmpty()) bookmarkedIds.add(s);
+                    }
+                } catch (Exception ignored) {}
                 JSONArray pr = ApiClient.progress();
                 continueReading = new JSONArray();
                 if (pr != null) {
@@ -163,7 +172,7 @@ public class HomeActivity extends AppCompatActivity {
                         Object ch = o.opt("latestChapter");
                         String sub = o.optString("latestChapterLabel", ch == null ? "" : "Ch. " + ch);
                         final String fid = mid, ft = title, fc = cover;
-                        row.addView(Views.card(HomeActivity.this, mid, title, cover, sub,
+                        row.addView(Views.card(HomeActivity.this, mid, title, cover, sub, bookmarkedIds,
                                 v -> open(fid, ft, fc)));
                         placed++;
                         if (placed == gridCols) { infiniteGrid.addView(row); row = Views.row(HomeActivity.this); placed = 0; }
@@ -196,7 +205,7 @@ public class HomeActivity extends AppCompatActivity {
                     sub = ch == null ? "" : "Ch. " + ch;
                 }
                 final String fid = mid, ft = title, fc = cover;
-                View card = Views.card(this, mid, title, cover, sub, v -> open(fid, ft, fc));
+                View card = Views.card(this, mid, title, cover, sub, bookmarkedIds, v -> open(fid, ft, fc));
                 if (withProgress) addProgress(card, o);
                 row.addView(card);
             } catch (Exception ignored) {}

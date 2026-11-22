@@ -368,6 +368,8 @@ public class DownloadsActivity extends Activity {
                 Intent in = new Intent(this, ReaderActivity.class);
                 in.putExtra("mangaId", mangaId);
                 in.putExtra("chapterUrl", pick);
+                in.putExtra("returnTitle", t.optString("title", ""));
+                in.putExtra("returnCover", t.optString("cover", ""));
                 startActivity(in);
                 return;
             }
