@@ -7,6 +7,7 @@ import android.view.ViewGroup;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -297,7 +298,8 @@ public class ComicDetailActivity extends AppCompatActivity {
                 meta.setOrientation(LinearLayout.HORIZONTAL);
                 meta.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
                 TextView rt = new TextView(this);
-                rt.setText("★ " + r.optString("rating", "—"));
+                double rtg = r.optDouble("rating", -1);
+                rt.setText(rtg > 0 ? "★ " + String.format(java.util.Locale.US, "%.1f", rtg) : "★ —");
                 rt.setTextColor(0xFFFFC107);
                 rt.setTextSize(10);
                 rt.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -436,7 +438,10 @@ public class ComicDetailActivity extends AppCompatActivity {
         Button pclear = new Button(this); pclear.setText("Clear"); pclear.setTextSize(12); pclear.setAllCaps(false);
         pclear.setOnClickListener(v -> { selected.clear(); refreshSheet(d); });
         pills.addView(pAll); pills.addView(p10); pills.addView(p25); pills.addView(punread); pills.addView(pclear);
-        root.addView(pills, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        HorizontalScrollView pillScroll = new HorizontalScrollView(this);
+        pillScroll.setPadding(0, 0, 0, 0);
+        pillScroll.addView(pills, new HorizontalScrollView.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(pillScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ScrollView sv = new ScrollView(this);
         LinearLayout list = new LinearLayout(this);
