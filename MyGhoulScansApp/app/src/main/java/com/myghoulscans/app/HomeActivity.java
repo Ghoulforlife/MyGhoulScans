@@ -95,6 +95,7 @@ public class HomeActivity extends AppCompatActivity {
         }
 
         @Override protected void onPostExecute(Void v) {
+            if (isFinishing() || isDestroyed()) return;
             fill(R.id.continueRow, continueReading, true);
             fill(R.id.latestRow, latest, false);
             fill(R.id.popularRow, popular, false);

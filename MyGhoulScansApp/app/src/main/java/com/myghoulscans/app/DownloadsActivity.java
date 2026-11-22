@@ -22,15 +22,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.util.HashSet;
-import java.util.Set;
 
-/** Downloads page: storage bar, expandable comic cards and per-chapter rows. */
+/** Downloads: Webtoon-style list of series with cover, chapter count, size, read/delete. */
 public class DownloadsActivity extends Activity {
     private LinearLayout cards;
-    private final Set<String> expanded = new HashSet<>();
-    private boolean manage;
-    private Button manageBtn;
     private TextView storageText, storagePct;
     private ProgressBar storageBar;
     private LinearLayout activeCard;
@@ -59,18 +54,6 @@ public class DownloadsActivity extends Activity {
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         header.addView(title);
-        manageBtn = new Button(this);
-        manageBtn.setText("Manage");
-        manageBtn.setTextSize(13);
-        manageBtn.setAllCaps(false);
-        manageBtn.setTextColor(0xFFE11D2E);
-        manageBtn.setBackgroundResource(android.R.color.transparent);
-        manageBtn.setOnClickListener(v -> {
-            manage = !manage;
-            manageBtn.setText(manage ? "Done" : "Manage");
-            render();
-        });
-        header.addView(manageBtn);
         outer.addView(header);
 
         LinearLayout store = new LinearLayout(this);
@@ -151,16 +134,6 @@ public class DownloadsActivity extends Activity {
     }
 
     private void render() {
-        try {
-            StatFs s = new StatFs(Environment.getDataDirectory().getPath());
-            long total = s.getTotalBytes(), free = s.getAvailableBytes();
-            long used = total - free;
-            int pct = total > 0 ? (int) (used * 100 / total) : 0;
-            storageText.setText(DownloadStore.readable(used) + " / " + DownloadStore.readable(total) + " used");
-            storagePct.setText(pct + "% used");
-            storageBar.setProgress(pct);
-        } catch (Exception ignored) {}
-
         // Auto-delete read chapters older than 24h (opt-in).
         if (getSharedPreferences("mgs", MODE_PRIVATE).getBoolean("auto_delete", false)) {
             long now = System.currentTimeMillis();
@@ -189,6 +162,16 @@ public class DownloadsActivity extends Activity {
             } catch (Exception ignored) {}
         }
 
+        try {
+            StatFs s = new StatFs(Environment.getDataDirectory().getPath());
+            long total = s.getTotalBytes(), free = s.getAvailableBytes();
+            long used = total - free;
+            int pct = total > 0 ? (int) (used * 100 / total) : 0;
+            storageText.setText(DownloadStore.readable(used) + " / " + DownloadStore.readable(total) + " used");
+            storagePct.setText(pct + "% used");
+            storageBar.setProgress(pct);
+        } catch (Exception ignored) {}
+
         cards.removeAllViews();
         JSONArray titles = DownloadStore.listTitles(this);
         if (titles.length() == 0) {
@@ -202,205 +185,174 @@ public class DownloadsActivity extends Activity {
             return;
         }
         for (int i = 0; i < titles.length(); i++) {
-            try { cards.addView(comicCard(titles.getJSONObject(i))); } catch (Exception ignored) {}
+            try {
+                JSONObject t = titles.getJSONObject(i);
+                cards.addView(row(t));
+                JSONArray cs = t.optJSONArray("chapters");
+                if (cs != null) for (int j = 0; j < cs.length(); j++) {
+                    try { cards.addView(chapterRow(t.optString("mangaId", ""), cs.getJSONObject(j))); } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
         }
     }
 
-    private LinearLayout comicCard(JSONObject t) {
+    private LinearLayout chapterRow(String mangaId, JSONObject c) {
+        final String curl = c.optString("chapterUrl", "");
+        String label = c.optString("label", "Chapter");
+        long bytes = c.optLong("bytes", 0);
+        long time = c.optLong("time", 0);
+
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(Views.dp(this, 8), Views.dp(this, 6), Views.dp(this, 8), Views.dp(this, 6));
+        r.setBackgroundColor(0xFF1A1A22);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.bottomMargin = Views.dp(this, 4);
+        rp.leftMargin = Views.dp(this, 26);
+        r.setLayoutParams(rp);
+
+        TextView name = new TextView(this);
+        name.setText(label);
+        name.setTextColor(0xFFFFFFFF);
+        name.setTextSize(12);
+        name.setMaxLines(1);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        name.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.6f));
+        r.addView(name);
+
+        addCell(r, DownloadStore.readable(bytes), 0.8f, 0xFF979BA8);
+        addCell(r, "Downloaded", 0.9f, 0xFF2ECC71);
+        addCell(r, relTime(time), 0.9f, 0xFF979BA8);
+
+        Button del = new Button(this);
+        del.setText("x");
+        del.setTextSize(12);
+        del.setAllCaps(false);
+        del.setTextColor(0xFFE11D2E);
+        del.setBackgroundResource(android.R.color.transparent);
+        del.setPadding(Views.dp(this, 6), 0, Views.dp(this, 6), 0);
+        del.setOnClickListener(v -> {
+            DownloadStore.deleteChapter(this, mangaId, curl);
+            Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show();
+            render();
+        });
+        del.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 24), ViewGroup.LayoutParams.WRAP_CONTENT));
+        r.addView(del);
+
+        r.setOnClickListener(v -> {
+            Intent in = new Intent(this, ReaderActivity.class);
+            in.putExtra("mangaId", mangaId);
+            in.putExtra("chapterUrl", curl);
+            startActivity(in);
+        });
+        return r;
+    }
+
+    private void addCell(LinearLayout row, String text, float weight, int color) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextColor(color);
+        tv.setTextSize(10);
+        tv.setMaxLines(1);
+        tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight));
+        row.addView(tv);
+    }
+
+    private static String relTime(long time) {
+        if (time <= 0) return "";
+        long days = (System.currentTimeMillis() - time) / 86400000L;
+        if (days <= 0) return "today";
+        if (days == 1) return "1 day ago";
+        return days + " days ago";
+    }
+
+    private LinearLayout row(JSONObject t) {
         final String mangaId = t.optString("mangaId", "");
         String title = t.optString("title", "Untitled");
-        String source = mangaId.contains(":") ? mangaId.split(":")[1] : "source";
         JSONArray chapters = t.optJSONArray("chapters");
         int count = chapters == null ? 0 : chapters.length();
+        long bytes = t.optLong("bytes", 0);
 
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundResource(R.drawable.mgs_card);
-        card.setPadding(Views.dp(this, 10), Views.dp(this, 10), Views.dp(this, 10), Views.dp(this, 10));
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(Views.dp(this, 8), Views.dp(this, 8), Views.dp(this, 8), Views.dp(this, 8));
+        r.setBackgroundResource(R.drawable.mgs_card);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.bottomMargin = Views.dp(this, 6);
+        r.setLayoutParams(rp);
 
-        LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
         ImageView cover = new ImageView(this);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         File cf = new File(DownloadStore.titleDir(this, mangaId), "cover.jpg");
         if (cf.exists()) cover.setImageBitmap(BitmapFactory.decodeFile(cf.getAbsolutePath()));
         else cover.setImageResource(R.mipmap.ic_launcher);
-        cover.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 46), Views.dp(this, 62)));
-        head.addView(cover);
-
-        LinearLayout texts = new LinearLayout(this);
-        texts.setOrientation(LinearLayout.VERTICAL);
-        texts.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        texts.setPadding(Views.dp(this, 10), 0, 0, 0);
-        TextView name = new TextView(this);
-        name.setText(title);
-        name.setTextColor(0xFFFFFFFF);
-        name.setTextSize(14);
-        name.setMaxLines(2);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        texts.addView(name);
-        TextView sub = new TextView(this);
-        sub.setText(source + " · " + count + " chapter" + (count == 1 ? "" : "s") + " downloaded");
-        sub.setTextColor(0xFF979BA8);
-        sub.setTextSize(11);
-        texts.addView(sub);
-        head.addView(texts);
-
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.VERTICAL);
-        right.setGravity(Gravity.END);
-        TextView size = new TextView(this);
-        size.setText(DownloadStore.readable(t.optLong("bytes", 0)));
-        size.setTextColor(0xFFFFFFFF);
-        size.setTextSize(13);
-        right.addView(size);
-        TextView check = new TextView(this);
-        check.setText("✓");
-        check.setTextColor(0xFF2ECC71);
-        check.setTextSize(18);
-        check.setGravity(Gravity.END);
-        right.addView(check);
-        head.addView(right);
-
-        head.setClickable(true);
-        head.setOnClickListener(v -> {
-            if (manage) {
-                if (!expanded.add(mangaId)) expanded.remove(mangaId);
-                render();
-                return;
-            }
-            openComic(mangaId, title);
-        });
-        card.addView(head);
-
-        if (chapters != null && chapters.length() > 0) {
-            Button readOff = new Button(this);
-            readOff.setText("Read Offline");
-            readOff.setTextSize(12);
-            readOff.setAllCaps(false);
-            readOff.setTextColor(0xFFFFFFFF);
-            readOff.setBackgroundResource(R.drawable.mgs_accent_button);
-            readOff.setOnClickListener(v -> openNextUnread(mangaId));
-            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rlp.topMargin = Views.dp(this, 6);
-            readOff.setLayoutParams(rlp);
-            card.addView(readOff);
-        }
-
-        if ((manage || expanded.contains(mangaId)) && chapters != null) {
-            for (int i = 0; i < chapters.length(); i++) {
-                try { card.addView(chapterRow(mangaId, chapters.getJSONObject(i), cf)); }
-                catch (Exception ignored) {}
-            }
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = Views.dp(this, 10);
-        card.setLayoutParams(lp);
-        return card;
-    }
-
-    private LinearLayout chapterRow(final String mangaId, JSONObject c, File coverFile) {
-        final String curl = c.optString("chapterUrl", "");
-        String label = c.optString("label", "Chapter");
-        int pages = c.optInt("pages", 0);
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Views.dp(this, 5), Views.dp(this, 6), Views.dp(this, 3), Views.dp(this, 6));
-        row.setBackgroundColor(0xFF23232B);
-
-        ImageView thumb = new ImageView(this);
-        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        if (coverFile.exists()) thumb.setImageBitmap(BitmapFactory.decodeFile(coverFile.getAbsolutePath()));
-        else thumb.setImageResource(R.mipmap.ic_launcher);
-        thumb.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 24), Views.dp(this, 32)));
-        row.addView(thumb);
+        cover.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 38), Views.dp(this, 54)));
+        r.addView(cover);
 
         LinearLayout mid = new LinearLayout(this);
         mid.setOrientation(LinearLayout.VERTICAL);
         mid.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        mid.setPadding(Views.dp(this, 8), 0, 0, 0);
+        mid.setPadding(Views.dp(this, 10), 0, 0, 0);
         TextView name = new TextView(this);
-        name.setText(label);
+        name.setText(title);
         name.setTextColor(0xFFFFFFFF);
         name.setTextSize(13);
-        name.setSingleLine(true);
+        name.setMaxLines(2);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mid.addView(name);
-        TextView meta = new TextView(this);
-        meta.setText(DownloadStore.readable(c.optLong("bytes", 0)));
-        meta.setTextColor(0xFF979BA8);
-        meta.setTextSize(10);
-        meta.setSingleLine(true);
-        mid.addView(meta);
-        row.addView(mid);
+        TextView sub = new TextView(this);
+        sub.setText(count + " chapter" + (count == 1 ? "" : "s") + " · " + DownloadStore.readable(bytes));
+        sub.setTextColor(0xFF979BA8);
+        sub.setTextSize(11);
+        mid.addView(sub);
+        r.addView(mid);
 
-        if (!manage) {
-            TextView state = new TextView(this);
-            boolean read = DownloadStore.isRead(this, mangaId, curl);
-            state.setText(read ? "Read" : "Unread");
-            state.setTextColor(read ? 0xFF2ECC71 : 0xFF979BA8);
-            state.setTextSize(10);
-            state.setSingleLine(true);
-            row.addView(state);
-        }
+        Button read = new Button(this);
+        read.setText("Read Offline");
+        read.setTextSize(11);
+        read.setAllCaps(false);
+        read.setTextColor(0xFF2ECC71);
+        read.setBackgroundResource(android.R.color.transparent);
+        read.setPadding(Views.dp(this, 4), 0, Views.dp(this, 4), 0);
+        read.setOnClickListener(v -> openNextUnread(mangaId));
+        r.addView(read);
 
-        Button open = new Button(this);
-        open.setText("Read Offline");
-        open.setTextSize(14);
-        open.setAllCaps(false);
-        open.setMinWidth(0);
-        open.setMinimumWidth(0);
-        open.setPadding(Views.dp(this, 8), Views.dp(this, 6), Views.dp(this, 8), Views.dp(this, 6));
-        open.setTextColor(0xFF2ECC71);
-        open.setBackgroundResource(android.R.color.transparent);
-        open.setOnClickListener(v -> {
-            Intent i = new Intent(this, ReaderActivity.class);
-            i.putExtra("mangaId", mangaId);
-            i.putExtra("chapterUrl", curl);
-            startActivity(i);
-        });
-        row.addView(open);
+        Button del = new Button(this);
+        del.setText("x");
+        del.setTextSize(12);
+        del.setAllCaps(false);
+        del.setTextColor(0xFFE11D2E);
+        del.setBackgroundResource(android.R.color.transparent);
+        del.setPadding(Views.dp(this, 6), 0, Views.dp(this, 6), 0);
+        del.setOnClickListener(v ->
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Delete downloads")
+                        .setMessage("Delete all downloaded chapters of " + title + "?")
+                        .setPositiveButton("Delete", (d, w) -> {
+                            DownloadStore.deleteTitle(this, mangaId);
+                            Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show();
+                            render();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show());
+        r.addView(del);
 
-        if (!manage) {
-            row.setClickable(true);
-            row.setOnClickListener(v -> {
-                Intent i = new Intent(this, ReaderActivity.class);
-                i.putExtra("mangaId", mangaId);
-                i.putExtra("chapterUrl", curl);
-                startActivity(i);
-            });
-        }
-
-        if (manage) {
-            Button del = new Button(this);
-            del.setText("✕");
-            del.setTextSize(11);
-            del.setMinWidth(0);
-            del.setMinimumWidth(0);
-            del.setPadding(Views.dp(this, 3), 0, Views.dp(this, 3), 0);
-            del.setBackgroundResource(android.R.color.transparent);
-            del.setOnClickListener(v -> {
-                DownloadStore.deleteChapter(this, mangaId, curl);
-                Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show();
-                render();
-            });
-            row.addView(del);
-        }
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = Views.dp(this, 4);
-        row.setLayoutParams(lp);
-        return row;
+        r.setOnClickListener(v -> openComic(mangaId, title));
+        return r;
     }
 
-    @Override
-    public void onBackPressed() { Nav.home(this); }
+    private void openComic(String mangaId, String title) {
+        Intent i = new Intent(this, ComicDetailActivity.class);
+        i.putExtra("id", mangaId);
+        i.putExtra("title", title);
+        i.putExtra("cover", "");
+        startActivity(i);
+    }
 
     private void openNextUnread(String mangaId) {
         try {
@@ -430,12 +382,6 @@ public class DownloadsActivity extends Activity {
         } catch (Exception e) { Toast.makeText(this, "Could not open chapter", Toast.LENGTH_SHORT).show(); }
     }
 
-    /** Tapping a downloaded comic opens its chapter list screen (no inline dropdown). */
-    private void openComic(String mangaId, String title) {
-        Intent i = new Intent(this, ComicDetailActivity.class);
-        i.putExtra("id", mangaId);
-        i.putExtra("title", title);
-        i.putExtra("cover", "");
-        startActivity(i);
-    }
+    @Override
+    public void onBackPressed() { Nav.home(this); }
 }

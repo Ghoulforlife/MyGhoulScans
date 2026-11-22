@@ -24,6 +24,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.util.ArrayList;
 
 public class ComicDetailActivity extends AppCompatActivity {
     private String mangaId, title, cover;
@@ -101,6 +102,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                         final JSONArray gs = d.optJSONArray("genres");
                         genres = gs;
                         runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
                             title = t; cover = c;
                             ((TextView) findViewById(R.id.detailTitle)).setText(t);
                             ((TextView) findViewById(R.id.detailTopTitle)).setText(t);
@@ -140,7 +142,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                                 }
                             }
                             if (c != null && !c.isEmpty())
-                                Glide.with(ComicDetailActivity.this).load(ApiClient.imgUrl(c)).placeholder(R.mipmap.ic_launcher)
+                                Glide.with(getApplicationContext()).load(ApiClient.imgUrl(c)).placeholder(R.mipmap.ic_launcher)
                                         .into((ImageView) findViewById(R.id.detailCover));
                         });
                     }
@@ -168,6 +170,7 @@ public class ComicDetailActivity extends AppCompatActivity {
             return null;
         }
         @Override protected void onPostExecute(Void v) {
+            if (isFinishing() || isDestroyed()) return;
             if (chapters == null) chapters = new JSONArray();
             ((TextView) findViewById(R.id.detailCount)).setText(chapters.length() + " chapters");
             if (ApiClient.isSignedIn()) {
@@ -283,7 +286,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                 card.setBackgroundResource(R.drawable.mgs_card);
                 ImageView img = new ImageView(this);
                 img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                Glide.with(this).load(ApiClient.imgUrl(rcover)).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
+                Glide.with(getApplicationContext()).load(ApiClient.imgUrl(rcover)).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
                 img.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), Views.dp(this, 136)));
                 card.addView(img);
                 TextView t = new TextView(this);
@@ -353,6 +356,32 @@ public class ComicDetailActivity extends AppCompatActivity {
         } else {
             sa.setVisibility(View.GONE);
         }
+        if (!downloaded.isEmpty()) {
+            Button delAll = findViewById(R.id.chapterDeleteAll);
+            if (delAll == null) {
+                delAll = new Button(this);
+                delAll.setId(R.id.chapterDeleteAll);
+                delAll.setText("Delete all downloaded");
+                delAll.setTextSize(12);
+                delAll.setAllCaps(false);
+                delAll.setTextColor(0xFFE11D2E);
+                delAll.setBackgroundResource(R.drawable.mgs_card);
+                delAll.setOnClickListener(v ->
+                        new android.app.AlertDialog.Builder(this)
+                                .setTitle("Delete downloads")
+                                .setMessage("Delete all downloaded chapters of this comic?")
+                                .setPositiveButton("Delete", (d, w) -> {
+                                    for (String u : new ArrayList<>(downloaded)) DownloadStore.deleteChapter(this, mangaId, u);
+                                    downloaded.clear();
+                                    renderChapters();
+                                    Toast.makeText(this, "Downloads deleted", Toast.LENGTH_SHORT).show();
+                                })
+                                .setNegativeButton("Cancel", null)
+                                .show());
+                ((ViewGroup) chapterList.getParent()).addView(delAll);
+            }
+            delAll.setVisibility(View.VISIBLE);
+        }
     }
 
     private LinearLayout chapterRow(JSONObject c) {
@@ -384,6 +413,19 @@ public class ComicDetailActivity extends AppCompatActivity {
         read.setTextSize(12);
         read.setOnClickListener(v -> openOnline(url));
         row.addView(read);
+
+        if (downloaded.contains(url)) {
+            Button del = new Button(this);
+            del.setText("x");
+            del.setTextSize(12);
+            del.setOnClickListener(v -> {
+                DownloadStore.deleteChapter(this, mangaId, url);
+                downloaded.remove(url);
+                renderChapters();
+                Toast.makeText(this, "Deleted download", Toast.LENGTH_SHORT).show();
+            });
+            row.addView(del);
+        }
 
         Button dl = new Button(this);
         dl.setText("↓");

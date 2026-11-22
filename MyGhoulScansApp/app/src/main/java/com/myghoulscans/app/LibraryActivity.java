@@ -143,6 +143,7 @@ public class LibraryActivity extends AppCompatActivity {
             return out;
         }
         @Override protected void onPostExecute(List<JSONObject> result) {
+            if (isFinishing() || isDestroyed()) return;
             items = result;
             if (loadError != null) {
                 TextView t = new TextView(LibraryActivity.this);
@@ -197,7 +198,7 @@ public class LibraryActivity extends AppCompatActivity {
 
         ImageView cover = new ImageView(this);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Glide.with(this).load(ApiClient.imgUrl(o.optString("cover", ""))).override(80, 112)
+        Glide.with(getApplicationContext()).load(ApiClient.imgUrl(o.optString("cover", ""))).override(80, 112)
                 .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(cover);
         cover.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 38), Views.dp(this, 54)));
         r.addView(cover);
