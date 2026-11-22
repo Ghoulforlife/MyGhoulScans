@@ -36,6 +36,9 @@ public class ComicDetailActivity extends AppCompatActivity {
     private boolean sheetOpen;
     private final java.util.Set<String> selected = new java.util.HashSet<>();
     private int rangeAnchor = -1;
+    private final java.util.List<LinearLayout> sheetRows = new java.util.ArrayList<>();
+    private final java.util.List<TextView> sheetChecks = new java.util.ArrayList<>();
+    private final java.util.List<String> sheetUrls = new java.util.ArrayList<>();
     private int resumeIdx = -1;
     private Dialog sheet;
     private TextView sheetCount, sheetSize;
@@ -455,6 +458,9 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (chapters == null || chapters.length() == 0) { Toast.makeText(this, "No chapters", Toast.LENGTH_SHORT).show(); return; }
         selected.clear();
         rangeAnchor = -1;
+        sheetRows.clear();
+        sheetChecks.clear();
+        sheetUrls.clear();
         Dialog d = new Dialog(this);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout root = new LinearLayout(this);
@@ -498,6 +504,9 @@ public class ComicDetailActivity extends AppCompatActivity {
                 check.setTextSize(18);
                 check.setTextColor(selected.contains(url) ? 0xFFE11D2E : 0xFF979BA8);
                 check.setOnClickListener(v -> toggleSel(idx));
+                sheetRows.add(row);
+                sheetChecks.add(check);
+                sheetUrls.add(url);
                 TextView lbl = new TextView(this);
                 lbl.setText(label);
                 lbl.setTextColor(0xFFFFFFFF);
@@ -592,6 +601,13 @@ public class ComicDetailActivity extends AppCompatActivity {
     }
 
     private void refreshSheet(Dialog d) {
+        // Repaint every row so taps/pills visibly highlight the selection.
+        for (int i = 0; i < sheetRows.size(); i++) {
+            boolean on = i < sheetUrls.size() && selected.contains(sheetUrls.get(i));
+            sheetRows.get(i).setBackgroundColor(on ? 0xFF3A141B : 0xFF1C1C24);
+            sheetChecks.get(i).setText(on ? "✓" : "○");
+            sheetChecks.get(i).setTextColor(on ? 0xFFE11D2E : 0xFF979BA8);
+        }
         int n = selected.size();
         sheetCount.setText(n + " chapter" + (n == 1 ? "" : "s") + " selected");
         long bytes = 0;
@@ -687,11 +703,12 @@ public class ComicDetailActivity extends AppCompatActivity {
 
     private void openOnline(String chapterUrl) {
         if (chapterUrl == null || chapterUrl.isEmpty()) return;
+        // Always use the native reader (offline copy if downloaded, network otherwise)
+        // — never bounce the user out to the website WebView.
         try {
-            String url = "https://ghoulforlife.github.io/MyGhoulScans/#/reader/" + mangaId
-                    + "/" + java.net.URLEncoder.encode(chapterUrl, "UTF-8") + "/0";
-            Intent i = new Intent(this, MainActivity.class);
-            i.putExtra("url", url);
+            Intent i = new Intent(this, ReaderActivity.class);
+            i.putExtra("mangaId", mangaId);
+            i.putExtra("chapterUrl", chapterUrl);
             startActivity(i);
         } catch (Exception ignored) {}
     }

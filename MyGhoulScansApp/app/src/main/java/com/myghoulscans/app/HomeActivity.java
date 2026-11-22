@@ -57,17 +57,38 @@ public class HomeActivity extends AppCompatActivity {
             if (raw != null) {
                 try {
                     JSONObject d = new JSONObject(raw).optJSONObject("data");
-                    if (d != null) popular = d.optJSONArray("trending");
+                    if (d != null) {
+                        popular = d.optJSONArray("trending");
+                        recent = d.optJSONArray("recent");
+                    }
                 } catch (Exception ignored) {}
             }
-            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=1&enrich=1", 10 * 60 * 1000);
+            // Page 1 of these genres returns the exact same list as Latest — use page 2
+            // so each shelf actually shows different comics.
+            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=2&enrich=1", 10 * 60 * 1000);
             if (raw != null) try { picks = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
-            raw = ApiClient.getCached("/comick/latest?source=flamecomics&enrich=1", 10 * 60 * 1000);
-            if (raw != null) try { recent = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
-            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=fantasy&page=1&enrich=1", 10 * 60 * 1000);
+            raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=fantasy&page=2&enrich=1", 10 * 60 * 1000);
             if (raw != null) try { ongoing = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
             raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=romance&page=1&enrich=1", 10 * 60 * 1000);
             if (raw != null) try { romance = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+
+            // Recently Added: comix "recent" feed, then source fallbacks so the row is never empty.
+            if (recent == null || recent.length() == 0) {
+                raw = ApiClient.getCached("/comick/latest?source=flamecomics&enrich=1", 10 * 60 * 1000);
+                if (raw != null) try { recent = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            }
+            if (recent == null || recent.length() == 0) {
+                raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=3&enrich=1", 10 * 60 * 1000);
+                if (raw != null) try { recent = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            }
+            if (picks == null || picks.length() == 0) {
+                raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=action&page=1&enrich=1", 10 * 60 * 1000);
+                if (raw != null) try { picks = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            }
+            if (ongoing == null || ongoing.length() == 0) {
+                raw = ApiClient.getCached("/comick/genre?source=mangaread&genre=fantasy&page=1&enrich=1", 10 * 60 * 1000);
+                if (raw != null) try { ongoing = new JSONObject(raw).optJSONArray("data"); } catch (Exception ignored) {}
+            }
 
             if (ApiClient.isSignedIn()) {
                 JSONArray pr = ApiClient.progress();
@@ -155,17 +176,18 @@ public class HomeActivity extends AppCompatActivity {
         }.execute();
     }
 
-    private final java.util.Set<String> shownIds = new java.util.HashSet<>();
-
     private void fill(int id, JSONArray arr, boolean withProgress) {
         LinearLayout row = findViewById(id);
         if (row == null || arr == null) return;
         row.removeAllViews();
-        for (int i = 0; i < Math.min(12, arr.length()); i++) {
+        // Dedup within this shelf only — a title on "Latest" may still appear on
+        // "Top Picks"/"Popular Ongoing" without emptying those rows.
+        java.util.HashSet<String> inRow = new java.util.HashSet<>();
+        for (int i = 0; i < Math.min(16, arr.length()); i++) {
             try {
                 JSONObject o = arr.getJSONObject(i);
                 String mid = o.optString("id", "");
-                if (mid.isEmpty() || !shownIds.add(mid)) continue;
+                if (mid.isEmpty() || !inRow.add(mid)) continue;
                 String title = o.optString("title", "Untitled");
                 String cover = o.optString("cover", "");
                 String sub = o.optString("latestChapterLabel", "");
