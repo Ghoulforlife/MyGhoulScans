@@ -140,7 +140,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                                 }
                             }
                             if (c != null && !c.isEmpty())
-                                Glide.with(ComicDetailActivity.this).load(c).placeholder(R.mipmap.ic_launcher)
+                                Glide.with(ComicDetailActivity.this).load(ApiClient.imgUrl(c)).placeholder(R.mipmap.ic_launcher)
                                         .into((ImageView) findViewById(R.id.detailCover));
                         });
                     }
@@ -283,7 +283,7 @@ public class ComicDetailActivity extends AppCompatActivity {
                 card.setBackgroundResource(R.drawable.mgs_card);
                 ImageView img = new ImageView(this);
                 img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                Glide.with(this).load(rcover).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
+                Glide.with(this).load(ApiClient.imgUrl(rcover)).override(120, 160).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
                 img.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), Views.dp(this, 136)));
                 card.addView(img);
                 TextView t = new TextView(this);

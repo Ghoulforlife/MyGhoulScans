@@ -151,5 +151,13 @@ final class ApiClient {
         return text;
     }
 
+    static String imgUrl(String url) {
+        if (url == null || url.isEmpty()) return url;
+        if (url.startsWith("http")) {
+            try { return BASE + "/img?u=" + q(url); } catch (Exception e) { return url; }
+        }
+        return url;
+    }
+
     static String q(String s) throws Exception { return URLEncoder.encode(s, "UTF-8"); }
 }

@@ -38,6 +38,7 @@ public class LibraryActivity extends AppCompatActivity {
     private List<JSONObject> items = new ArrayList<>();
     private Set<String> readingIds = new HashSet<>();
     private String loadError;
+    private int gridCols = 3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,6 +46,7 @@ public class LibraryActivity extends AppCompatActivity {
         ApiClient.init(this);
         setContentView(R.layout.activity_library);
         Nav.attach(this, 2);
+        gridCols = Math.max(2, getResources().getConfiguration().screenWidthDp / 100);
         grid = findViewById(R.id.libraryGrid);
         filters = findViewById(R.id.libFilters);
         search = findViewById(R.id.libSearch);
@@ -183,10 +185,10 @@ public class LibraryActivity extends AppCompatActivity {
         }
         LinearLayout row = null;
         for (int i = 0; i < shown.size(); i++) {
-            if (i % 3 == 0) { row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); }
+            if (i % gridCols == 0) { row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); }
             final JSONObject o = shown.get(i);
             row.addView(card(o), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            if (i % 3 == 2 || i == shown.size() - 1) {
+            if (i % gridCols == gridCols - 1 || i == shown.size() - 1) {
                 grid.addView(row);
                 row = null;
             }

@@ -31,6 +31,7 @@ public class HomeActivity extends AppCompatActivity {
     private int page = 1;
     private boolean loading;
     private long lastLoadAt = 0;
+    private int gridCols = 2;
     private final java.util.HashSet<String> seen = new java.util.HashSet<>();
 
     @Override
@@ -39,6 +40,7 @@ public class HomeActivity extends AppCompatActivity {
         ApiClient.init(this);
         setContentView(R.layout.activity_home);
         Nav.attach(this, 0);
+        gridCols = Math.max(2, getResources().getConfiguration().screenWidthDp / 110);
         ((Button) findViewById(R.id.homeSearch)).setOnClickListener(v ->
                 startActivity(new Intent(this, SearchActivity.class)));
         infiniteGrid = findViewById(R.id.infiniteGrid);
@@ -163,7 +165,7 @@ public class HomeActivity extends AppCompatActivity {
                         row.addView(Views.card(HomeActivity.this, mid, title, cover, sub,
                                 v -> open(fid, ft, fc)));
                         placed++;
-                        if (placed == 2) { infiniteGrid.addView(row); row = Views.row(HomeActivity.this); placed = 0; }
+                        if (placed == gridCols) { infiniteGrid.addView(row); row = Views.row(HomeActivity.this); placed = 0; }
                     } catch (Exception ignored) {}
                 }
                 if (placed > 0) infiniteGrid.addView(row);
