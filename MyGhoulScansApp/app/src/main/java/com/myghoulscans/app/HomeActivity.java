@@ -154,6 +154,8 @@ public class HomeActivity extends AppCompatActivity {
         }.execute();
     }
 
+    private final java.util.Set<String> shownIds = new java.util.HashSet<>();
+
     private void fill(int id, JSONArray arr, boolean withProgress) {
         LinearLayout row = findViewById(id);
         if (row == null || arr == null) return;
@@ -162,6 +164,7 @@ public class HomeActivity extends AppCompatActivity {
             try {
                 JSONObject o = arr.getJSONObject(i);
                 String mid = o.optString("id", "");
+                if (mid.isEmpty() || !shownIds.add(mid)) continue;
                 String title = o.optString("title", "Untitled");
                 String cover = o.optString("cover", "");
                 String sub = o.optString("latestChapterLabel", "");
