@@ -49,6 +49,7 @@ public class ComicDetailActivity extends AppCompatActivity {
     private int resumePage = 0;
     private JSONArray cloudProgress; // fetched off the main thread with the detail data
     private final java.util.Set<String> bookmarkedRecs = new java.util.HashSet<>();
+    private final java.util.Map<String, String> recCounts = new java.util.HashMap<>();
     private boolean newestFirst = false;
     private boolean showAllChapters = false;
     private final java.util.Set<String> downloaded = new java.util.HashSet<>();
@@ -70,9 +71,30 @@ public class ComicDetailActivity extends AppCompatActivity {
         findViewById(R.id.detailBack).setOnClickListener(v -> Nav.back(this, HomeActivity.class));
         new LoadTask().execute();
         new BookmarkTask().execute();
+        loadRecBookmarks();
     }
 
-    @Override protected void onResume() { super.onResume(); new BookmarkTask().execute(); }
+    @Override protected void onResume() { super.onResume(); new BookmarkTask().execute(); loadRecBookmarks(); }
+
+    /** Load the signed-in user's library once so every recommendation star
+     *  starts in the correct (filled or empty) state. */
+    private void loadRecBookmarks() {
+        if (!ApiClient.isSignedIn()) return;
+        new AsyncTask<Void, Void, JSONArray>() {
+            @Override protected JSONArray doInBackground(Void... unused) {
+                try { return new JSONObject(ApiClient.get("/library")).optJSONArray("mangaIds"); }
+                catch (Exception e) { return null; }
+            }
+            @Override protected void onPostExecute(JSONArray ids) {
+                if (ids == null || isFinishing() || isDestroyed()) return;
+                for (int i = 0; i < ids.length(); i++) {
+                    String s = ids.optString(i, "");
+                    if (!s.isEmpty()) bookmarkedRecs.add(s);
+                }
+                buildRecs();
+            }
+        }.execute();
+    }
 
     private class BookmarkTask extends AsyncTask<Void, Void, Boolean> {
         @Override protected Boolean doInBackground(Void... unused) {
@@ -329,26 +351,30 @@ public class ComicDetailActivity extends AppCompatActivity {
                 meta.setOrientation(LinearLayout.HORIZONTAL);
                 meta.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 100), ViewGroup.LayoutParams.WRAP_CONTENT));
                 TextView rt = new TextView(this);
-                double rtg = r.optDouble("rating", -1);
-                rt.setText(rtg > 0 ? "★ " + String.format(java.util.Locale.US, "%.1f", rtg) : "★ —");
-                rt.setTextColor(0xFFFFC107);
+                String chapterCount = recCounts.containsKey(rid) ? recCounts.get(rid) : recCountOf(r);
+                rt.setText(chapterCount.isEmpty() ? "Ch. …" : "Ch. " + chapterCount);
+                rt.setTextColor(0xFF979BA8);
                 rt.setTextSize(10);
+                rt.setSingleLine(true);
                 rt.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 meta.addView(rt);
-                Button bm = new Button(this);
-                bm.setText(bookmarkedRecs.contains(rid) ? "★" : "☆");
-                bm.setTextSize(14);
+                if (chapterCount.isEmpty()) fetchRecCount(rid, rt);
+
+                final Button bm = new Button(this);
+                paintRecStar(bm, rid);
+                bm.setTextSize(16);
                 bm.setAllCaps(false);
-                bm.setTextColor(bookmarkedRecs.contains(rid) ? 0xFFE11D2E : 0xFF979BA8);
                 bm.setBackgroundResource(android.R.color.transparent);
                 bm.setPadding(0, 0, 0, 0);
+                bm.setContentDescription("Bookmark " + rtitle);
                 bm.setOnClickListener(v -> {
                     if (!ApiClient.isSignedIn()) { Toast.makeText(ComicDetailActivity.this, "Sign in to bookmark", Toast.LENGTH_SHORT).show(); return; }
                     boolean now = !bookmarkedRecs.contains(rid);
-                    ApiClient.bookmark(rid, now);
+                    final boolean save = now;
+                    new Thread(() -> ApiClient.bookmark(rid, save)).start(); // never on the UI thread
                     if (now) bookmarkedRecs.add(rid); else bookmarkedRecs.remove(rid);
-                    bm.setText(now ? "★" : "☆");
-                    bm.setTextColor(now ? 0xFFE11D2E : 0xFF979BA8);
+                    paintRecStar(bm, rid);
+                    Toast.makeText(ComicDetailActivity.this, now ? "Added to library" : "Removed from library", Toast.LENGTH_SHORT).show();
                 });
                 meta.addView(bm);
                 card.addView(meta);
@@ -359,6 +385,43 @@ public class ComicDetailActivity extends AppCompatActivity {
                 row.addView(card);
             } catch (Exception ignored) {}
         }
+    }
+
+    /** Chapter count supplied by the feed (empty when the source omits it). */
+    private static String recCountOf(JSONObject r) {
+        String s = r.optString("latestChapterLabel", "");
+        if (s.isEmpty()) {
+            Object ch = r.opt("latestChapter");
+            if (ch != null) {
+                try { int n = Integer.parseInt(String.valueOf(ch)); if (n > 0) s = String.valueOf(n); }
+                catch (Exception ignored) {}
+            }
+        }
+        return s.replaceAll("[^0-9]", "");
+    }
+
+    /** Some sources return no chapter count at all — ask the chapters endpoint. */
+    private void fetchRecCount(final String rid, final TextView label) {
+        new Thread(() -> {
+            String count = "";
+            try {
+                String raw = ApiClient.getCached("/comick/chapters?id=" + q(rid), 10 * 60 * 1000);
+                JSONArray arr = raw == null ? null : new JSONObject(raw).optJSONArray("data");
+                if (arr != null && arr.length() > 0) count = String.valueOf(arr.length());
+            } catch (Exception ignored) {}
+            final String found = count;
+            if (!found.isEmpty()) recCounts.put(rid, found);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || label == null) return;
+                label.setText(found.isEmpty() ? "Ch. ?" : "Ch. " + found);
+            });
+        }).start();
+    }
+
+    private void paintRecStar(Button star, String rid) {
+        boolean on = bookmarkedRecs.contains(rid);
+        star.setText(on ? "★" : "☆");
+        star.setTextColor(on ? 0xFFE11D2E : 0xFF979BA8);
     }
 
     private void openDetail(String id, String title, String cover) {

@@ -280,7 +280,7 @@ public class LibraryActivity extends AppCompatActivity {
         del.setBackgroundResource(android.R.color.transparent);
         del.setPadding(Views.dp(this, 6), 0, Views.dp(this, 6), 0);
         del.setOnClickListener(v -> {
-            ApiClient.bookmark(id, false);
+            new Thread(() -> ApiClient.bookmark(id, false)).start(); // network off the UI thread
             items.remove(o);
             paint();
             Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show();

@@ -125,7 +125,9 @@ final class ApiClient {
         HttpURLConnection c = (HttpURLConnection) new URL(BASE + path).openConnection();
         c.setRequestMethod(method);
         c.setConnectTimeout(15000);
-        c.setReadTimeout(20000);
+        // Search fans out across several sources and can take 40s+; the old
+        // 20s read timeout made every search silently fail with no results.
+        c.setReadTimeout(90000);
         c.setRequestProperty("User-Agent", "MyGhoulScans/2.0 (Android)");
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("Referer", "https://ghoulforlife.github.io/");

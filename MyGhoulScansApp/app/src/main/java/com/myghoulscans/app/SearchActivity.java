@@ -34,31 +34,52 @@ public class SearchActivity extends AppCompatActivity {
         findViewById(R.id.searchBack).setOnClickListener(v -> Nav.home(this));
         findViewById(R.id.searchGo).setOnClickListener(v -> search());
         input.setOnEditorActionListener((v, actionId, event) -> { search(); return true; });
+        message("Search for a manga, manhwa or manhua above");
     }
 
     private void search() {
         final String q = input.getText().toString().trim();
         if (q.isEmpty()) { Toast.makeText(this, "Type a title", Toast.LENGTH_SHORT).show(); return; }
-        new AsyncTask<Void, Void, JSONArray>() {
+        message("Searching for “" + q + "”…");
+        new AsyncTask<Void, JSONArray, JSONArray>() {
             @Override protected JSONArray doInBackground(Void... unused) {
-                try { return new JSONObject(ApiClient.get("/comick/search?q=" + ApiClient.q(q))).optJSONArray("data"); }
-                catch (Exception e) { return null; }
+                // Show the fast, reliable source first (~1s) so the tab is never
+                // blank while the full fan-out (~40s) is still running.
+                JSONArray quick = null;
+                try {
+                    quick = new JSONObject(ApiClient.get("/comick/search?q=" + ApiClient.q(q) + "&source=mangaread"))
+                            .optJSONArray("data");
+                } catch (Exception ignored) {}
+                publishProgress(quick);
+                try {
+                    return new JSONObject(ApiClient.get("/comick/search?q=" + ApiClient.q(q))).optJSONArray("data");
+                } catch (Exception e) { return null; }
+            }
+            @Override protected void onProgressUpdate(JSONArray... vals) {
+                if (vals.length > 0 && vals[0] != null && vals[0].length() > 0) paint(vals[0]);
             }
             @Override protected void onPostExecute(JSONArray arr) {
-                results.removeAllViews();
-                if (arr == null || arr.length() == 0) {
-                    TextView t = new TextView(SearchActivity.this);
-                    t.setText("No results for “" + q + "”");
-                    t.setTextColor(0xFF979BA8);
-                    t.setPadding(8, 30, 8, 8);
-                    results.addView(t);
-                    return;
-                }
-                for (int i = 0; i < arr.length(); i++) {
-                    try { results.addView(resultRow(arr.getJSONObject(i))); } catch (Exception ignored) {}
-                }
+                if (arr != null && arr.length() > 0) paint(arr);
+                else if (results.getChildCount() == 0 || results.getChildAt(0) instanceof TextView)
+                    message("No results for “" + q + "” — try another title");
             }
         }.execute();
+    }
+
+    private void message(String text) {
+        results.removeAllViews();
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(0xFF979BA8);
+        t.setPadding(8, 30, 8, 8);
+        results.addView(t);
+    }
+
+    private void paint(JSONArray arr) {
+        results.removeAllViews();
+        for (int i = 0; i < arr.length(); i++) {
+            try { results.addView(resultRow(arr.getJSONObject(i))); } catch (Exception ignored) {}
+        }
     }
 
     private View resultRow(JSONObject o) {
@@ -90,8 +111,17 @@ public class SearchActivity extends AppCompatActivity {
         t.setEllipsize(android.text.TextUtils.TruncateAt.END);
         txt.addView(t);
         TextView s = new TextView(this);
-        Object ch = o.opt("latestChapter");
-        s.setText(o.optString("source", "") + (ch == null ? "" : " · Ch. " + ch));
+        String sub = o.optString("source", "");
+        String count = o.optString("latestChapterLabel", "");
+        if (count.isEmpty()) {
+            Object ch = o.opt("latestChapter");
+            if (ch != null) {
+                try { int n = Integer.parseInt(String.valueOf(ch)); if (n > 0) count = String.valueOf(n); }
+                catch (Exception ignored) {}
+            }
+        }
+        if (!count.isEmpty()) sub += " · " + count + (count.equals("1") ? " chapter" : " chapters");
+        s.setText(sub);
         s.setTextColor(0xFF979BA8);
         s.setTextSize(12);
         txt.addView(s);
