@@ -80,7 +80,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         bookmarked = on;
         Button b = findViewById(R.id.detailBookmark);
         if (b == null) return;
-        b.setText(on ? "★ In Library" : "☆ Bookmark");
+        b.setText(on ? "✓ In Library" : "Bookmark");
         b.setTextColor(on ? 0xFFFFFFFF : 0xFFFFFFFF);
     }
 
@@ -111,11 +111,11 @@ public class ComicDetailActivity extends AppCompatActivity {
                             dsc.setText(desc);
                             dsc.setMaxLines(3);
                             Button more = findViewById(R.id.detailMore);
-                            more.setText("More ⌄");
+                            more.setText("More v");
                             more.setOnClickListener(v -> {
                                 descExpanded = !descExpanded;
                                 dsc.setMaxLines(descExpanded ? Integer.MAX_VALUE : 3);
-                                more.setText(descExpanded ? "Less ⌃" : "More ⌄");
+                                more.setText(descExpanded ? "Less ^" : "More v");
                             });
                             LinearLayout pills = findViewById(R.id.detailGenres);
                             pills.removeAllViews();
@@ -206,8 +206,8 @@ public class ComicDetailActivity extends AppCompatActivity {
                 }
             } catch (Exception ignored) {}
             Button sort = findViewById(R.id.chapterSort);
-            sort.setText(newestFirst ? "Oldest ↑" : "Newest ↓");
-            sort.setOnClickListener(x -> { newestFirst = !newestFirst; sort.setText(newestFirst ? "Oldest ↑" : "Newest ↓"); renderChapters(); });
+            sort.setText(newestFirst ? "Oldest ^" : "Newest v");
+            sort.setOnClickListener(x -> { newestFirst = !newestFirst; sort.setText(newestFirst ? "Oldest ^" : "Newest v"); renderChapters(); });
             Button showAll = findViewById(R.id.chapterShowAll);
             showAll.setOnClickListener(x -> { showAllChapters = !showAllChapters; renderChapters(); });
             renderChapters();
@@ -349,7 +349,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (sa == null) return;
         if (n > 5) {
             sa.setVisibility(View.VISIBLE);
-            sa.setText(showAllChapters ? "Show Less ⌃" : "Show All " + n + " Chapters ⌄");
+            sa.setText(showAllChapters ? "Show Less ^" : "Show All " + n + " Chapters v");
         } else {
             sa.setVisibility(View.GONE);
         }

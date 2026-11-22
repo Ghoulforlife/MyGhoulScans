@@ -58,7 +58,7 @@
                     android:layout_height="46dp" android:text="Read first" android:textSize="13sp"
                     android:textColor="@color/white" android:background="@drawable/mgs_accent_button" />
                 <Button android:id="@+id/detailBookmark" android:layout_width="0dp" android:layout_weight="1"
-                    android:layout_height="46dp" android:text="☆ Bookmark" android:textSize="13sp"
+                    android:layout_height="46dp" android:text="Bookmark" android:textSize="13sp"
                     android:textColor="@color/white" android:background="@drawable/mgs_card"
                     android:layout_marginStart="6dp" />
                 <Button android:id="@+id/detailDownloadAll" android:layout_width="0dp" android:layout_weight="1"
