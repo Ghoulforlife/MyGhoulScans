@@ -185,14 +185,7 @@ public class DownloadsActivity extends Activity {
             return;
         }
         for (int i = 0; i < titles.length(); i++) {
-            try {
-                JSONObject t = titles.getJSONObject(i);
-                cards.addView(row(t));
-                JSONArray cs = t.optJSONArray("chapters");
-                if (cs != null) for (int j = 0; j < cs.length(); j++) {
-                    try { cards.addView(chapterRow(t.optString("mangaId", ""), cs.getJSONObject(j))); } catch (Exception ignored) {}
-                }
-            } catch (Exception ignored) {}
+            try { cards.addView(row(titles.getJSONObject(i))); } catch (Exception ignored) {}
         }
     }
 

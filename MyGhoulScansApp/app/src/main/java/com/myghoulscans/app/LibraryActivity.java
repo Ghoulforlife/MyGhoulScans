@@ -29,6 +29,8 @@ public class LibraryActivity extends AppCompatActivity {
     private String typeFilter = "All types";
     private String statusFilter = "All status";
     private String loadError;
+    private String sortBy = "added";
+    private boolean sortAsc = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,6 +63,13 @@ public class LibraryActivity extends AppCompatActivity {
                         })
                         .setNegativeButton("Cancel", null)
                         .show());
+
+        findViewById(R.id.libHeadTitle).setOnClickListener(v -> sortBy("title"));
+        findViewById(R.id.libHeadContinue).setOnClickListener(v -> sortBy("continue"));
+        findViewById(R.id.libHeadStatus).setOnClickListener(v -> sortBy("status"));
+        findViewById(R.id.libHeadLastRead).setOnClickListener(v -> sortBy("lastRead"));
+        findViewById(R.id.libHeadUpdated).setOnClickListener(v -> sortBy("updated"));
+        findViewById(R.id.libHeadAdded).setOnClickListener(v -> sortBy("added"));
 
         if (!ApiClient.isSignedIn()) {
             TextView t = new TextView(this);
@@ -125,11 +134,15 @@ public class LibraryActivity extends AppCompatActivity {
                     if (p != null) {
                         c.put("continueLabel", p.optString("chapter_label", "Ch. 1"));
                         c.put("lastRead", relTime(p.optString("updated_at", "")));
+                        c.put("lastReadTs", ts(p.optString("updated_at", "")));
                     } else {
                         c.put("continueLabel", "Start Ch. 1");
                         c.put("lastRead", "—");
+                        c.put("lastReadTs", 0L);
                     }
-                    c.put("added", relTime(added != null && added.has(id) ? added.optString(id, "") : ""));
+                    String addedStr = added != null && added.has(id) ? added.optString(id, "") : "";
+                    c.put("added", relTime(addedStr));
+                    c.put("addedTs", ts(addedStr));
                 } catch (Exception e) {
                     try {
                         c.put("id", id); c.put("title", id); c.put("cover", "");
@@ -155,10 +168,16 @@ public class LibraryActivity extends AppCompatActivity {
         }
     }
 
+    private void sortBy(String key) {
+        if (sortBy.equals(key)) sortAsc = !sortAsc;
+        else { sortBy = key; sortAsc = false; }
+        paint();
+    }
+
     private void paint() {
         list.removeAllViews();
         if (!ApiClient.isSignedIn()) return;
-        int shown = 0;
+        List<JSONObject> shown = new ArrayList<>();
         for (JSONObject o : items) {
             try {
                 String type = o.optString("type", "");
@@ -169,11 +188,30 @@ public class LibraryActivity extends AppCompatActivity {
                     String have = rawStatus.toLowerCase().replace("_", "").replace("-", "");
                     if (!have.contains(want.replace(" ", ""))) continue;
                 }
-                list.addView(row(o));
-                shown++;
+                shown.add(o);
             } catch (Exception ignored) {}
         }
-        if (shown == 0) {
+        final boolean asc = sortAsc;
+        java.util.Collections.sort(shown, (a, b) -> {
+            int c = 0;
+            try {
+                switch (sortBy) {
+                    case "title": c = a.optString("title", "").compareToIgnoreCase(b.optString("title", "")); break;
+                    case "continue": c = Double.compare(num(a.optString("continueLabel", "")), num(b.optString("continueLabel", ""))); break;
+                    case "status": c = a.optString("status", "").compareToIgnoreCase(b.optString("status", "")); break;
+                    case "lastRead": c = Long.compare(a.optLong("lastReadTs", 0), b.optLong("lastReadTs", 0)); break;
+                    case "updated": c = Double.compare(num(a.optString("updated", "")), num(b.optString("updated", ""))); break;
+                    default: c = Long.compare(a.optLong("addedTs", 0), b.optLong("addedTs", 0)); break;
+                }
+            } catch (Exception ignored) {}
+            return asc ? c : -c;
+        });
+        int count = 0;
+        for (JSONObject o : shown) {
+            list.addView(row(o));
+            count++;
+        }
+        if (count == 0) {
             TextView t = new TextView(this);
             t.setText(items.isEmpty() ? "Your library is empty — bookmark comics to see them here."
                     : "No comics match these filters.");
@@ -182,6 +220,12 @@ public class LibraryActivity extends AppCompatActivity {
             t.setPadding(0, 50, 0, 0);
             list.addView(t);
         }
+    }
+
+    private static double num(String s) {
+        if (s == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)").matcher(s);
+        return m.find() ? Double.parseDouble(m.group(1)) : 0;
     }
 
     private LinearLayout row(JSONObject o) {
@@ -273,6 +317,14 @@ public class LibraryActivity extends AppCompatActivity {
         if (t.contains("hiatus") || t.contains("pause")) return "On Hiatus";
         if (t.isEmpty()) return "—";
         return Character.toUpperCase(t.charAt(0)) + t.substring(1);
+    }
+
+    private static long ts(String iso) {
+        if (iso == null || iso.isEmpty()) return 0;
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+            return f.parse(iso.replace('T', ' ').substring(0, Math.min(19, iso.length()))).getTime();
+        } catch (Exception e) { return 0; }
     }
 
     private static String relTime(String iso) {

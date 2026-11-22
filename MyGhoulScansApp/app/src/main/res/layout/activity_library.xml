@@ -26,17 +26,17 @@
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:paddingStart="12dp" android:paddingEnd="12dp"
         android:paddingTop="10dp" android:paddingBottom="6dp">
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2.6"
+        <TextView android:id="@+id/libHeadTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2.6"
             android:text="Title" android:textColor="#FF979BA8" android:textSize="11sp" />
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.2"
+        <TextView android:id="@+id/libHeadContinue" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.2"
             android:text="Continue" android:textColor="#FF979BA8" android:textSize="11sp" />
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8"
+        <TextView android:id="@+id/libHeadStatus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8"
             android:text="Status" android:textColor="#FF979BA8" android:textSize="11sp" />
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.9"
+        <TextView android:id="@+id/libHeadLastRead" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.9"
             android:text="Last Read" android:textColor="#FF979BA8" android:textSize="11sp" />
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8"
+        <TextView android:id="@+id/libHeadUpdated" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8"
             android:text="Updated" android:textColor="#FF979BA8" android:textSize="11sp" />
-        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.9"
+        <TextView android:id="@+id/libHeadAdded" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.9"
             android:text="Added v" android:textColor="#FF979BA8" android:textSize="11sp" />
         <TextView android:layout_width="24dp" android:layout_height="wrap_content" android:text="" />
     </LinearLayout>
