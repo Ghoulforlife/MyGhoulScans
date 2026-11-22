@@ -1,17 +1,12 @@
 package com.myghoulscans.app;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Typeface;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -25,20 +20,15 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-/** Library: 3-column cover grid, filter pills, search and progress badges. */
+/** Library: Webtoon-style table (Title / Continue / Status / Last Read / Updated / Added). */
 public class LibraryActivity extends AppCompatActivity {
-    private static final String[] FILTERS = {"All", "Reading", "Unread", "Completed", "Tagged"};
-    private LinearLayout grid, filters;
-    private EditText search;
-    private String filter = "All";
+    private LinearLayout list;
     private List<JSONObject> items = new ArrayList<>();
-    private Set<String> readingIds = new HashSet<>();
+    private String typeFilter = "All types";
+    private String statusFilter = "All status";
     private String loadError;
-    private int gridCols = 3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,51 +36,51 @@ public class LibraryActivity extends AppCompatActivity {
         ApiClient.init(this);
         setContentView(R.layout.activity_library);
         Nav.attach(this, 2);
-        gridCols = Math.max(2, getResources().getConfiguration().screenWidthDp / 100);
-        grid = findViewById(R.id.libraryGrid);
-        filters = findViewById(R.id.libFilters);
-        search = findViewById(R.id.libSearch);
+        list = findViewById(R.id.libraryList);
 
-        for (String f : FILTERS) {
-            Button b = new Button(this);
-            b.setText(f);
-            b.setTextSize(12);
-            b.setAllCaps(false);
-            b.setTag(f);
-            b.setOnClickListener(v -> { filter = f; paintFilters(); paint(); });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = 6;
-            b.setLayoutParams(lp);
-            filters.addView(b);
-        }
-        paintFilters();
-
-        search.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-            public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            public void afterTextChanged(Editable s) { paint(); }
-        });
+        findViewById(R.id.libType).setOnClickListener(v -> choose("All types",
+                new String[]{"All types", "Manhua", "Manga", "Manhwa", "Oneshot"}, picked -> {
+            typeFilter = picked; paint();
+        }));
+        findViewById(R.id.libStatus).setOnClickListener(v -> choose("All status",
+                new String[]{"All status", "OnGoing", "Completed", "On Hiatus"}, picked -> {
+            statusFilter = picked; paint();
+        }));
+        findViewById(R.id.libClear).setOnClickListener(v ->
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Clear library")
+                        .setMessage("Remove every comic from your library?")
+                        .setPositiveButton("Clear all", (d, w) -> {
+                            new AsyncTask<Void, Void, Void>() {
+                                @Override protected Void doInBackground(Void... u) {
+                                    try { ApiClient.del("/library"); } catch (Exception ignored) {}
+                                    return null;
+                                }
+                                @Override protected void onPostExecute(Void x) { items.clear(); paint(); }
+                            }.execute();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show());
 
         if (!ApiClient.isSignedIn()) {
-            Button signIn = new Button(this);
-            signIn.setText("Sign in to see your library");
-            signIn.setBackgroundResource(R.drawable.mgs_accent_button);
-            signIn.setTextColor(0xFFFFFFFF);
-            signIn.setOnClickListener(v -> startActivity(new Intent(this, LoginActivity.class)));
-            grid.addView(signIn);
+            TextView t = new TextView(this);
+            t.setText("Sign in to see your library");
+            t.setTextColor(0xFF979BA8);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, 60, 0, 0);
+            list.addView(t);
             return;
         }
         new LoadTask().execute();
     }
 
-    private void paintFilters() {
-        for (int i = 0; i < filters.getChildCount(); i++) {
-            Button b = (Button) filters.getChildAt(i);
-            boolean on = filter.equals(b.getTag());
-            b.setBackgroundResource(on ? R.drawable.mgs_accent_button : R.drawable.mgs_card);
-            b.setTextColor(0xFFFFFFFF);
-        }
+    private interface Pick { void onPick(String value); }
+
+    private void choose(String title, String[] opts, final Pick cb) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setItems(opts, (d, which) -> cb.onPick(opts[which]))
+                .show();
     }
 
     private class LoadTask extends AsyncTask<Void, Void, List<JSONObject>> {
@@ -99,17 +89,23 @@ public class LibraryActivity extends AppCompatActivity {
             String lib = ApiClient.getCached("/library", 30000);
             if (lib == null) { loadError = "Could not load library"; return out; }
             JSONArray ids;
-            try { ids = new JSONObject(lib).optJSONArray("mangaIds"); }
-            catch (Exception e) { loadError = e.getMessage(); return out; }
+            JSONObject added = new JSONObject();
+            try {
+                JSONObject l = new JSONObject(lib);
+                ids = l.optJSONArray("mangaIds");
+                added = l.optJSONObject("added");
+            } catch (Exception e) { loadError = e.getMessage(); return out; }
             if (ids == null) return out;
 
-            JSONArray pr = ApiClient.progress();
-            if (pr != null) {
-                for (int i = 0; i < pr.length(); i++) {
-                    try { readingIds.add(pr.getJSONObject(i).optString("manga_id", "")); }
-                    catch (Exception ignored) {}
+            JSONObject progress = new JSONObject();
+            try {
+                JSONArray pr = ApiClient.progress();
+                if (pr != null) for (int i = 0; i < pr.length(); i++) {
+                    JSONObject p = pr.getJSONObject(i);
+                    progress.put(p.optString("manga_id", ""), p);
                 }
-            }
+            } catch (Exception ignored) {}
+
             for (int i = 0; i < ids.length(); i++) {
                 String id = ids.optString(i, "");
                 if (id.isEmpty()) continue;
@@ -120,24 +116,27 @@ public class LibraryActivity extends AppCompatActivity {
                     c.put("id", id);
                     c.put("title", t == null ? id : t.optString("title", "Untitled"));
                     c.put("cover", t == null ? "" : t.optString("cover", ""));
-                    c.put("status", t == null ? "" : t.optString("status", ""));
-                    c.put("reading", pr != null && readingIds.contains(id));
-                    c.put("tag", tagOf(LibraryActivity.this, id));
-                    // find progress label
-                    String pl = "";
-                    if (pr != null) {
-                        for (int j = 0; j < pr.length(); j++) {
-                            JSONObject p = pr.getJSONObject(j);
-                            if (id.equals(p.optString("manga_id", ""))) {
-                                pl = p.optString("chapter_label", "");
-                                break;
-                            }
-                        }
+                    c.put("type", t == null ? "" : t.optString("type", ""));
+                    String st = t == null ? "" : t.optString("status", "");
+                    c.put("status", prettyStatus(st));
+                    c.put("rawStatus", st);
+                    c.put("updated", t == null ? "" : t.optString("latestChapter", ""));
+                    JSONObject p = progress.optJSONObject(id);
+                    if (p != null) {
+                        c.put("continueLabel", p.optString("chapter_label", "Ch. 1"));
+                        c.put("lastRead", relTime(p.optString("updated_at", "")));
+                    } else {
+                        c.put("continueLabel", "Start Ch. 1");
+                        c.put("lastRead", "—");
                     }
-                    c.put("progressLabel", pl);
+                    c.put("added", relTime(added != null && added.has(id) ? added.optString(id, "") : ""));
                 } catch (Exception e) {
-                    try { c.put("id", id); c.put("title", id); c.put("cover", ""); c.put("status", ""); }
-                    catch (Exception ignored) {}
+                    try {
+                        c.put("id", id); c.put("title", id); c.put("cover", "");
+                        c.put("type", ""); c.put("status", "—"); c.put("rawStatus", "");
+                        c.put("updated", ""); c.put("continueLabel", "Start Ch. 1");
+                        c.put("lastRead", "—"); c.put("added", "");
+                    } catch (Exception ignored) {}
                 }
                 out.add(c);
             }
@@ -149,149 +148,143 @@ public class LibraryActivity extends AppCompatActivity {
                 TextView t = new TextView(LibraryActivity.this);
                 t.setText("Could not load: " + loadError);
                 t.setTextColor(0xFFE11D2E);
-                grid.addView(t);
+                list.addView(t);
             }
             paint();
         }
     }
 
     private void paint() {
+        list.removeAllViews();
         if (!ApiClient.isSignedIn()) return;
-        grid.removeAllViews();
-        String q = search.getText().toString().trim().toLowerCase();
-        List<JSONObject> shown = new ArrayList<>();
+        int shown = 0;
         for (JSONObject o : items) {
             try {
-                String title = o.optString("title", "").toLowerCase();
-                if (!q.isEmpty() && !title.contains(q)) continue;
-                String status = o.optString("status", "");
-                boolean read = o.optBoolean("reading", false);
-                if ("Reading".equals(filter) && !read) continue;
-                if ("Unread".equals(filter) && read) continue;
-                if ("Completed".equals(filter) && !status.toLowerCase().contains("complete")) continue;
-                if ("Tagged".equals(filter) && o.optString("tag", "").isEmpty()) continue;
-                shown.add(o);
+                String type = o.optString("type", "");
+                String rawStatus = o.optString("rawStatus", "");
+                if (!"All types".equals(typeFilter) && !typeFilter.equalsIgnoreCase(type)) continue;
+                if (!"All status".equals(statusFilter)) {
+                    String want = "OnGoing".equals(statusFilter) ? "ongoing" : statusFilter.toLowerCase().replace(" ", "");
+                    String have = rawStatus.toLowerCase().replace("_", "").replace("-", "");
+                    if (!have.contains(want.replace(" ", ""))) continue;
+                }
+                list.addView(row(o));
+                shown++;
             } catch (Exception ignored) {}
         }
-        if (shown.isEmpty()) {
+        if (shown == 0) {
             TextView t = new TextView(this);
             t.setText(items.isEmpty() ? "Your library is empty — bookmark comics to see them here."
-                    : "No comics match this filter.");
+                    : "No comics match these filters.");
             t.setTextColor(0xFF979BA8);
             t.setGravity(Gravity.CENTER);
             t.setPadding(0, 50, 0, 0);
-            grid.addView(t);
-            return;
-        }
-        LinearLayout row = null;
-        for (int i = 0; i < shown.size(); i++) {
-            if (i % gridCols == 0) { row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); }
-            final JSONObject o = shown.get(i);
-            row.addView(card(o), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            if (i % gridCols == gridCols - 1 || i == shown.size() - 1) {
-                grid.addView(row);
-                row = null;
-            }
+            list.addView(t);
         }
     }
 
-    private LinearLayout card(JSONObject o) {
-        final String id = o.optString("id", ""), title = o.optString("title", "Untitled"), cover = o.optString("cover", "");
-        LinearLayout c = new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setBackgroundResource(R.drawable.mgs_card);
-        c.setPadding(4, 4, 4, 8);
-        c.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    private LinearLayout row(JSONObject o) {
+        final String id = o.optString("id", "");
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(Views.dp(this, 6), Views.dp(this, 8), Views.dp(this, 4), Views.dp(this, 8));
+        r.setBackgroundResource(R.drawable.mgs_card);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.bottomMargin = Views.dp(this, 4);
+        r.setLayoutParams(rp);
 
-        ImageView img = new ImageView(this);
-        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Glide.with(this).load(cover).override(180, 250).placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(img);
-        img.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Views.dp(this, 120)));
-        c.addView(img);
+        ImageView cover = new ImageView(this);
+        cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        Glide.with(this).load(ApiClient.imgUrl(o.optString("cover", ""))).override(80, 112)
+                .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(cover);
+        cover.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 38), Views.dp(this, 54)));
+        r.addView(cover);
 
-        TextView t = new TextView(this);
-        t.setText(title);
-        t.setTextColor(0xFFFFFFFF);
-        t.setTextSize(11);
-        t.setMaxLines(2);
-        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        t.setPadding(3, 4, 3, 0);
-        c.addView(t);
+        TextView title = new TextView(this);
+        String t = o.optString("title", "Untitled");
+        String ty = o.optString("type", "");
+        title.setText(ty.isEmpty() ? t : t + "  ·  " + ty);
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(11);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2.6f));
+        r.addView(title);
 
-        TextView p = new TextView(this);
-        String pl = o.optString("progressLabel", "");
-        p.setText(pl.isEmpty() ? (o.optBoolean("reading", false) ? "Reading" : "Unread") : pl);
-        p.setTextColor(o.optBoolean("reading", false) ? 0xFF2ECC71 : 0xFF979BA8);
-        p.setTextSize(10);
-        p.setSingleLine(true);
-        p.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        p.setPadding(3, 1, 3, 0);
-        c.addView(p);
+        TextView cont = new TextView(this);
+        cont.setText(o.optString("continueLabel", "Start Ch. 1"));
+        cont.setTextColor(0xFF2ECC71);
+        cont.setTextSize(10);
+        cont.setMaxLines(1);
+        cont.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        cont.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f));
+        r.addView(cont);
 
-        String tag = o.optString("tag", "");
-        if (!tag.isEmpty()) {
-            TextView tg = new TextView(this);
-            tg.setText("#" + tag);
-            tg.setTextColor(0xFF979BA8);
-            tg.setTextSize(9);
-            tg.setSingleLine(true);
-            tg.setPadding(3, 1, 3, 0);
-            c.addView(tg);
-        }
+        addCell(r, o.optString("status", "—"), 0.8f, 0xFFBBBBBB);
+        addCell(r, o.optString("lastRead", "—"), 0.9f, 0xFF979BA8);
+        addCell(r, o.optString("updated", ""), 0.8f, 0xFF979BA8);
+        addCell(r, o.optString("added", ""), 0.9f, 0xFF979BA8);
 
-        final String ct = title, cc = cover;
-        c.setOnClickListener(v -> {
+        Button del = new Button(this);
+        del.setText("x");
+        del.setTextSize(12);
+        del.setAllCaps(false);
+        del.setTextColor(0xFF979BA8);
+        del.setBackgroundResource(android.R.color.transparent);
+        del.setPadding(Views.dp(this, 6), 0, Views.dp(this, 6), 0);
+        del.setOnClickListener(v -> {
+            ApiClient.bookmark(id, false);
+            items.remove(o);
+            paint();
+            Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show();
+        });
+        del.setLayoutParams(new LinearLayout.LayoutParams(Views.dp(this, 24), ViewGroup.LayoutParams.WRAP_CONTENT));
+        r.addView(del);
+
+        r.setOnClickListener(v -> {
             Intent i = new Intent(this, ComicDetailActivity.class);
-            i.putExtra("id", id); i.putExtra("title", ct); i.putExtra("cover", cc);
+            i.putExtra("id", id);
+            i.putExtra("title", o.optString("title", ""));
+            i.putExtra("cover", o.optString("cover", ""));
             startActivity(i);
         });
-        c.setOnLongClickListener(v -> {
-            String[] opts = {"Set tag", "Remove from library"};
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle(title)
-                    .setItems(opts, (d, which) -> {
-                        if (which == 0) {
-                            android.widget.EditText et = new android.widget.EditText(this);
-                            et.setText(tagOf(LibraryActivity.this, id));
-                            et.setHint("tag name");
-                            new android.app.AlertDialog.Builder(this)
-                                    .setTitle("Tag")
-                                    .setView(et)
-                                    .setPositiveButton("Save", (dd, ww) -> {
-                                        setTag(this, id, et.getText().toString());
-                                        items.remove(o);
-                                        paint();
-                                    })
-                                    .setNegativeButton("Cancel", null)
-                                    .show();
-                        } else {
-                            ApiClient.bookmark(id, false);
-                            items.remove(o);
-                            paint();
-                            Toast.makeText(this, "Removed from Library", Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .show();
-            return true;
-        });
-        return c;
+        return r;
     }
 
-    private static android.content.SharedPreferences getPrefs(Context c) {
-        return c.getApplicationContext().getSharedPreferences("mgs_tags", Context.MODE_PRIVATE);
+    private void addCell(LinearLayout row, String text, float weight, int color) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextColor(color);
+        tv.setTextSize(10);
+        tv.setMaxLines(1);
+        tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight));
+        row.addView(tv);
     }
 
-    private static String tagOf(Context c, String mangaId) {
-        try { return new org.json.JSONObject(getPrefs(c).getString("tags", "{}")).optString(mangaId, ""); }
-        catch (Exception e) { return ""; }
+    private static String prettyStatus(String s) {
+        if (s == null || s.isEmpty()) return "—";
+        String t = s.replace('_', ' ').replace('-', ' ').trim().toLowerCase();
+        if (t.contains("ongo")) return "OnGoing";
+        if (t.contains("complete") || t.contains("finish")) return "Completed";
+        if (t.contains("hiatus") || t.contains("pause")) return "On Hiatus";
+        if (t.isEmpty()) return "—";
+        return Character.toUpperCase(t.charAt(0)) + t.substring(1);
     }
 
-    private static void setTag(Context c, String mangaId, String tag) {
+    private static String relTime(String iso) {
+        if (iso == null || iso.isEmpty()) return "";
         try {
-            org.json.JSONObject o = new org.json.JSONObject(getPrefs(c).getString("tags", "{}"));
-            if (tag == null || tag.trim().isEmpty()) o.remove(mangaId); else o.put(mangaId, tag.trim());
-            getPrefs(c).edit().putString("tags", o.toString()).apply();
-        } catch (Exception ignored) {}
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+            java.util.Date d = f.parse(iso.replace('T', ' ').substring(0, Math.min(19, iso.length())));
+            long diff = System.currentTimeMillis() - d.getTime();
+            long days = diff / 86400000L;
+            if (days <= 0) return "today";
+            if (days == 1) return "1 day ago";
+            return days + " days ago";
+        } catch (Exception e) { return ""; }
     }
 
     @Override

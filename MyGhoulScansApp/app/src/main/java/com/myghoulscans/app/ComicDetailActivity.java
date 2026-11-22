@@ -349,7 +349,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (sa == null) return;
         if (n > 5) {
             sa.setVisibility(View.VISIBLE);
-            sa.setText(showAllChapters ? "Show Less ^" : "Show All " + n + " Chapters v");
+            sa.setText(showAllChapters ? "Show less ^" : "Show all " + n + " chapters v");
         } else {
             sa.setVisibility(View.GONE);
         }
