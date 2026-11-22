@@ -10,6 +10,13 @@
 
         <View android:id="@+id/eyeOverlay" android:layout_width="match_parent" android:layout_height="match_parent"
             android:background="#60FF8800" android:visibility="gone" />
+
+        <TextView android:id="@+id/readerChapter"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal" android:layout_marginTop="10dp"
+            android:background="#CC15151B" android:textColor="#FFFFFF" android:textSize="13sp"
+            android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="6dp" android:paddingBottom="6dp"
+            android:text="" />
     </FrameLayout>
 
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="52dp"
@@ -24,7 +31,7 @@
             android:background="?android:attr/selectableItemBackground" />
 
         <Button android:id="@+id/readerMode" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
-            android:text="Webtoon" android:textSize="10sp" android:textColor="@color/white"
+            android:text="Page" android:textSize="10sp" android:textColor="@color/white"
             android:background="?android:attr/selectableItemBackground" />
 
         <Button android:id="@+id/readerAuto" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
