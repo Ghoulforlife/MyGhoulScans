@@ -277,8 +277,12 @@ public class ReaderActivity extends Activity {
                 + "if(document.body.className==='pages')a[page].scrollIntoView();"
                 + "if(window.MGS)try{MGS.onPage(page)}catch(e){}}var page=0;"
                 + "if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){for(var i=0;i<es.length;i++){var e=es[i];if(!e.isIntersecting)continue;var n=parseInt(e.target.getAttribute('data-page'),10);if(isNaN(n))continue;setPage(n);}},"
-                + "{root:null,rootMargin:'0px 0px -85% 0px'});document.querySelectorAll('img').forEach(function(im){io.observe(im);});}}"
-                + "if('scroll' in window){var st=function(){var a=document.querySelectorAll('img');var cur=0;for(var i=0;i<a.length;i++){var r=a[i].getBoundingClientRect();if(r.top<window.innerHeight*0.7)cur=i;}if(cur!==page)setPage(cur);};addEventListener('scroll',function(){clearTimeout(st._t);st._t=setTimeout(st,120);},false);st();}"
+                + "{root:null,rootMargin:'0px 0px -85% 0px'});document.querySelectorAll('img').forEach(function(im){io.observe(im);});}"
+                + "if('scroll' in window){var st=function(){var a=document.querySelectorAll('img');if(!a.length||!a[0].naturalHeight)return;"
+                + "var y=(window.pageYOffset||document.documentElement.scrollTop||0)+window.innerHeight*0.4;var cur=0;"
+                + "for(var i=0;i<a.length;i++){if(a[i].offsetTop<=y)cur=i;}if(cur!==page)setPage(cur);};"
+                + "addEventListener('scroll',function(){clearTimeout(st._t);st._t=setTimeout(st,120);},false);"
+                + "document.querySelectorAll('img').forEach(function(im){im.addEventListener('load',st);});st();}"
                 + "if(document.body.className==='pages')setPage(0);"
                 + "document.addEventListener('click',function(ev){if(document.body.className!=='pages')return;"
                 + "var n=document.querySelectorAll('img').length;var right=ev.clientX>window.innerWidth/2;"
@@ -439,20 +443,32 @@ public class ReaderActivity extends Activity {
     /** Push reading progress + read-count to the website so the cloud stays in sync. */
     private void syncProgress(final int pg) { syncProgress(pg, false); }
 
-    /** @param force bypass the 4s throttle — used on chapter changes so quick
-     *  next/prev (and auto-advance) still saves where the reader is. */
+    /** One background worker keeps saves in order and prevents a slow, older
+     *  request from overwriting a newer page the reader has already reached. */
+    private final java.util.concurrent.ExecutorService syncExec =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.atomic.AtomicInteger pendingPage =
+            new java.util.concurrent.atomic.AtomicInteger(-1);
+    private long lastSyncAt = 0;
+
+    /** @param force bypass the 1s throttle — used on chapter changes and exit
+     *  so quick next/prev (and auto-advance) still saves where the reader is. */
     private void syncProgress(final int pg, final boolean force) {
         rememberReader(pg);
         if (!ApiClient.isSignedIn()) return;
         final String manga = mangaId, chapter = chapterUrl;
+        if (manga == null || chapter == null) return;
+        pendingPage.set(Math.max(0, pg));
         final long now = System.currentTimeMillis();
-        if (!force && now - lastSyncAt < 4000) return;
+        if (!force && now - lastSyncAt < 1000) return;
         lastSyncAt = now;
-        new Thread(() -> {
+        syncExec.execute(() -> {
+            final int pageToSave = pendingPage.get();
+            if (manga == null || chapter == null) return;
             try {
                 JSONObject body = new JSONObject();
                 body.put("chapterId", chapter);
-                body.put("page", Math.max(0, pg));
+                body.put("page", Math.max(0, pageToSave));
                 body.put("chapterLabel", chapterLabel(manga, chapter));
                 ApiClient.post("/progress/" + ApiClient.q(manga), body.toString());
             } catch (Exception ignored) {}
@@ -462,10 +478,8 @@ public class ReaderActivity extends Activity {
                 r.put("chapterId", chapter);
                 ApiClient.post("/reads", r.toString());
             } catch (Exception ignored) {}
-        }).start();
+        });
     }
-
-    private long lastSyncAt = 0;
 
     private void preloadNext() {
         if (nextChapter == null || nextChapter.isEmpty()) { Toast.makeText(this, "No next chapter to preload", Toast.LENGTH_SHORT).show(); return; }

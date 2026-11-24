@@ -49,6 +49,13 @@ public class HomeActivity extends AppCompatActivity {
         new LoadTask().execute();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        // Refresh "Continue reading" with the latest cloud progress every time
+        // the user returns to Home — no need to reopen a comic to see it.
+        if (findViewById(R.id.continueRow) != null) new LoadTask().execute();
+    }
+
     private class LoadTask extends AsyncTask<Void, Void, Void> {
         @Override protected Void doInBackground(Void... unused) {
             // Cached GETs: first launch fetches, later launches are instant.
