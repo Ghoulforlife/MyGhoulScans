@@ -35,6 +35,7 @@ public class ReaderActivity extends Activity {
     private int autoSpeed = 1;
     private boolean eyeCare = false;
     private String prevChapter, nextChapter;
+    private int pendingRestorePage = -1;
     private TextView chapterPill;
     private final Handler pillHandler = new Handler();
     private final Runnable hidePill = () -> { if (chapterPill != null) chapterPill.animate().alpha(0f).setDuration(300).start(); };
@@ -64,6 +65,20 @@ public class ReaderActivity extends Activity {
         if (returnTitle == null || returnTitle.isEmpty()) returnTitle = last.getString("title", "");
         if (returnCover == null || returnCover.isEmpty()) returnCover = last.getString("cover", "");
         web = findViewById(R.id.readerWeb);
+        // Restore the exact page after a reload (online pages load asynchronously).
+        web.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override public void onPageFinished(android.webkit.WebView v, String url) {
+                if (pendingRestorePage <= 0) return;
+                final int keep = pendingRestorePage;
+                pendingRestorePage = -1;
+                page = Math.min(keep, Math.max(0, pageCount - 1));
+                v.evaluateJavascript("var a=document.querySelectorAll('img');var n=Math.min("
+                        + page + ",a.length-1);if(typeof setPage==='function')setPage(n);"
+                        + "if(document.body.className!=='pages'&&a[n])a[n].scrollIntoView();", null);
+                showChapter();
+                syncProgress(page, true);
+            }
+        });
         WebSettings s = web.getSettings();
         s.setAllowFileAccess(true);
         s.setAllowFileAccessFromFileURLs(true);
@@ -132,6 +147,20 @@ public class ReaderActivity extends Activity {
             return true;
         });
         findViewById(R.id.readerChapters).setOnClickListener(v -> showChapterPicker());
+        // Side controls: jump to the first page, or re-fetch a chapter whose
+        // images failed to load.
+        findViewById(R.id.readerTop).setOnClickListener(v -> {
+            web.evaluateJavascript("window.scrollTo(0,0);if(typeof setPage==='function')setPage(0);", null);
+            page = 0;
+            showChapter();
+            syncProgress(0, false);
+        });
+        findViewById(R.id.readerReload).setOnClickListener(v -> {
+            Toast.makeText(this, "Reloading chapter…", Toast.LENGTH_SHORT).show();
+            final int keep = Math.max(0, page);
+            loadChapter(mangaId, chapterUrl); // clears any previous restore target
+            pendingRestorePage = keep;        // come back to the same page
+        });
         updateChapterButton();
         findViewById(R.id.readerBack).setOnClickListener(v -> backToComic());
         findViewById(R.id.readerPrev).setOnClickListener(v -> goPrev());
@@ -216,6 +245,7 @@ public class ReaderActivity extends Activity {
 
     /** Load downloaded pages when available, otherwise stream the chapter from the API. */
     private void loadChapter(String manga, String chapter) {
+        pendingRestorePage = -1; // only an explicit reload keeps its position
         curManga = manga; mangaId = manga; chapterUrl = chapter;
         rememberReader(0);
         DownloadStore.markRead(this, manga, chapter);
@@ -449,6 +479,8 @@ public class ReaderActivity extends Activity {
             java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.concurrent.atomic.AtomicInteger pendingPage =
             new java.util.concurrent.atomic.AtomicInteger(-1);
+    private final java.util.concurrent.atomic.AtomicLong syncSeq =
+            new java.util.concurrent.atomic.AtomicLong(0);
     private long lastSyncAt = 0;
 
     /** @param force bypass the 1s throttle — used on chapter changes and exit
@@ -462,7 +494,11 @@ public class ReaderActivity extends Activity {
         final long now = System.currentTimeMillis();
         if (!force && now - lastSyncAt < 1000) return;
         lastSyncAt = now;
+        final long seq = syncSeq.incrementAndGet();
         syncExec.execute(() -> {
+            // A queued save from an earlier chapter must never land after the
+            // user has moved on — that was making Ch. 6 revert to Ch. 3/4.
+            if (seq != syncSeq.get()) return;
             final int pageToSave = pendingPage.get();
             if (manga == null || chapter == null) return;
             try {
