@@ -1719,12 +1719,13 @@ function chapterListHtml(chapters, progress, counts, manga) {
   const group = manga && manga.source ? String(manga.source).replace(/^cx:/, '') : 'Mangakakalot';
   const rows = () => chapters.map((c) => {
     const num = (c.number || c.number === 0) ? c.number : '?';
+    const when = c.date || c.publishedAt || c.published || c.updatedAt || 0;
     const isCurrent = progress && progress.chapter_id === c.url;
     const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
-    return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${c.date || 0}" data-group="${esc(group)}"${ext}>
-      <span class="cnum">Ch. ${esc(num)}</span>
+    return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${when}" data-group="${esc(group)}"${ext}>
+      <span class="cnum">Ch. ${esc(num)}<small class="cnum-date">${when ? esc(chapDate(when)) : 'Date unknown'}</small></span>
       <span class="ct-up">${c.uploads || 2}↑</span>
-      <span class="ct-date">${c.date ? esc(timeAgo(c.date)) + '<small>' + esc(chapDate(c.date)) + '</small>' : ''}</span>
+      <span class="ct-date">${when ? esc(timeAgo(when)) + '<small>' + esc(chapDate(when)) + '</small>' : 'Date unknown'}</span>
       <span class="ct-group">${esc(group)}</span>
     </div>`;
   }).join('');
