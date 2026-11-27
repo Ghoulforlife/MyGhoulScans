@@ -624,7 +624,7 @@ public class ComicDetailActivity extends AppCompatActivity {
         long ts = c.optLong("date", 0);
         date.setText(ts > 0 ? timeAgoApp(ts) + "\n" + dateApp(ts) : "");
         date.setTextColor(0xFF979BA8);
-        date.setTextSize(10);
+        date.setTextSize(11);
         date.setPadding(Views.dp(this, 2), 0, Views.dp(this, 2), 0);
         row.addView(date);
 
