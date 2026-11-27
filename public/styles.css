@@ -554,10 +554,8 @@ a { color: inherit; text-decoration: none; }
   background: transparent; }
 .chapter-table .ct-row:hover { background: var(--panel2, #1c1c24); }
 .chapter-table .cnum { color: var(--text, #fff); min-width: 0; font-size: 13px; }
-.cnum-date { display: block; color: var(--muted, #979ba8); font-size: 10px; font-weight: 400; }
 .ct-up { color: var(--muted, #979ba8); font-size: 12px; }
 .ct-date { color: var(--muted, #979ba8); font-size: 12px; }
-.ct-date small { display: block; font-size: 10px; opacity: .75; }
 .ct-group { color: #5b8def; font-size: 12px; }
 .chapter-table .ct-head { border-bottom: 1px solid var(--line, #2a2a33); }
 .chapter-table .ct-row:last-child { border-bottom: 0; }
@@ -571,7 +569,6 @@ a { color: inherit; text-decoration: none; }
   .chapter-table .ct-row { grid-template-columns: 58px 1fr; gap: 6px; padding: 10px 8px; }
   .ct-up, .ct-group { display: none; }
   .ct-date { font-size: 11px; text-align: right; }
-  .ct-date small { font-size: 10px; }
 }
 .chapter-list { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .chapter-item {

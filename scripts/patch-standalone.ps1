@@ -32,12 +32,6 @@ $newHandlers = Cut $app "    // Chapter table: sortable columns, goto filter, an
 $oldHandlers = Cut $html "    `$('#chapterExpand')?.addEventListener('click', () => {" "    view.querySelectorAll('.row-ctrl')"
 $html = $html.Replace($oldHandlers, $newHandlers)
 
-# 4. Absolute chapter release date helper
-if (-not $html.Contains('function chapDate(ts)')) {
-  $newDate = Cut $app '// Absolute release date ("Nov 27, 2026")' '// A chapter entry is navigable only when it carries a usable url.'
-  $html = $html.Replace('// A chapter entry is navigable only when it carries a usable url.', $newDate + '// A chapter entry is navigable only when it carries a usable url.')
-}
-
 # 5. Reader recommendations fall back to same-genre titles
 $newRec = Cut $app 'async function fillRecRow(mangaId, genres) {' '// "More like this":'
 $oldRec = Cut $html 'async function fillRecRow(mangaId) {' '// "More like this":'

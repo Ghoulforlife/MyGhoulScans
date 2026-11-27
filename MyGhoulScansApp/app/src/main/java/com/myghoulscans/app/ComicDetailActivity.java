@@ -510,12 +510,6 @@ public class ComicDetailActivity extends AppCompatActivity {
         v.setText(n + "↑");
     }
 
-    private static String dateApp(long ts) {
-        try {
-            return new java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(new java.util.Date(ts));
-        } catch (Exception e) { return ""; }
-    }
-
     private static String timeAgoApp(long ts) {
         long s = Math.max(0, (System.currentTimeMillis() - ts) / 1000);
         if (s < 60) return "just now";
@@ -622,7 +616,7 @@ public class ComicDetailActivity extends AppCompatActivity {
 
         TextView date = new TextView(this);
         long ts = c.optLong("date", 0);
-        date.setText(ts > 0 ? timeAgoApp(ts) + "\n" + dateApp(ts) : "");
+        date.setText(ts > 0 ? timeAgoApp(ts) : "");
         date.setTextColor(0xFF979BA8);
         date.setTextSize(11);
         date.setPadding(Views.dp(this, 2), 0, Views.dp(this, 2), 0);

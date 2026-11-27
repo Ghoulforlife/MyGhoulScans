@@ -1723,9 +1723,9 @@ function chapterListHtml(chapters, progress, counts, manga) {
     const isCurrent = progress && progress.chapter_id === c.url;
     const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
     return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${when}" data-group="${esc(group)}"${ext}>
-      <span class="cnum">Ch. ${esc(num)}<small class="cnum-date">${when ? esc(chapDate(when)) : 'Date unknown'}</small></span>
+      <span class="cnum">Ch. ${esc(num)}</span>
       <span class="ct-up">${c.uploads || 2}↑</span>
-      <span class="ct-date">${when ? esc(timeAgo(when)) + '<small>' + esc(chapDate(when)) + '</small>' : 'Date unknown'}</span>
+      <span class="ct-date">${when ? esc(timeAgo(when)) : ''}</span>
       <span class="ct-group">${esc(group)}</span>
     </div>`;
   }).join('');
@@ -1766,12 +1766,6 @@ function timeAgo(ts) {
   if (mo < 12) return mo === 1 ? 'a month' : `${mo} months`;
   const y = Math.floor(mo / 12);
   return y <= 1 ? 'a year' : `${y} years`;
-}
-// Absolute release date ("Nov 27, 2026") shown under the relative age.
-function chapDate(ts) {
-  const d = new Date(Number(ts));
-  if (!Number(ts) || isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 // A chapter entry is navigable only when it carries a usable url.
 function chapterUrl(c) {
