@@ -2005,7 +2005,6 @@ async function renderTitle(mangaId) {
       row.scrollBy({ left: b.classList.contains('prev') ? -dist : dist, behavior: 'smooth' });
     }));
 
-    $('#recBtn').addEventListener('click', () => openRecModal(mangaId));
     fillRecRow(mangaId, manga.genres);
     fillSimilarRow(mangaId, manga.genres);
   } catch (e) {

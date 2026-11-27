@@ -51,6 +51,7 @@ if ($i -ge 0) {
     if ($depth -eq 0) { $end = $p; break }
   }
   if ($end -gt 0) { $html = $html.Substring(0, $i) + $html.Substring($end) }
+  $html = $html.Replace("    `$('#recBtn').addEventListener('click', () => openRecModal(mangaId));`n", '')
 }
 
 # 6. New CSS
