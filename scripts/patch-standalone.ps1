@@ -32,11 +32,14 @@ $newHandlers = Cut $app "    // Chapter table: sortable columns, goto filter, an
 $oldHandlers = Cut $html "    `$('#chapterExpand')?.addEventListener('click', () => {" "    view.querySelectorAll('.row-ctrl')"
 $html = $html.Replace($oldHandlers, $newHandlers)
 
-# 5. Reader recommendations fall back to same-genre titles
-$newRec = Cut $app 'async function fillRecRow(mangaId, genres) {' '// "More like this":'
-$oldRec = Cut $html 'async function fillRecRow(mangaId) {' '// "More like this":'
-$html = $html.Replace($oldRec, $newRec)
-$html = $html.Replace('fillRecRow(mangaId);', 'fillRecRow(mangaId, manga.genres);')
+# 5. Keep a single recommendation carousel ("More like this"); remove the
+#    duplicate "Recommended by readers" section.
+$recSect = '<div class="sect" id="recSect">'
+$i = $html.IndexOf($recSect)
+if ($i -ge 0) {
+  $j = $html.IndexOf('</div>', $html.IndexOf('id="recRow"', $i))
+  if ($j -ge 0) { $html = $html.Substring(0, $i) + $html.Substring($j + 6) }
+}
 
 # 6. New CSS
 $newCss = Cut $css '/* Chapter table (matches the app' '.chapter-list { display: flex;'

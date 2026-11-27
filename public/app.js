@@ -1856,10 +1856,6 @@ async function renderTitle(mangaId) {
           <div class="hrow" id="simRow">${spinner(6)}</div>
           <button class="row-ctrl next" data-row="simRow" title="Scroll right">&#10095;</button>
         </div>
-      </div>
-      <div class="sect" id="recSect">
-        <h2 class="sect-title">Recommended by readers <button class="btn ghost" id="recBtn">+ Recommend similar titles</button></h2>
-        <div class="hrow" id="recRow"></div>
       </div>`;
 
     $('#downloadAllBtn')?.addEventListener('click', () => {

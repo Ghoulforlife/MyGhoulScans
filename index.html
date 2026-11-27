@@ -3496,9 +3496,7 @@ async function renderTitle(mangaId) {
           <button class="row-ctrl next" data-row="simRow" title="Scroll right">&#10095;</button>
         </div>
       </div>
-      <div class="sect" id="recSect">
-        <h2 class="sect-title">Recommended by readers <button class="btn ghost" id="recBtn">+ Recommend similar titles</button></h2>
-        <div class="hrow" id="recRow"></div>
+      
       </div>`;
 
     $('#downloadAllBtn')?.addEventListener('click', () => {
@@ -3649,7 +3647,7 @@ async function renderTitle(mangaId) {
     }));
 
     $('#recBtn').addEventListener('click', () => openRecModal(mangaId));
-    fillRecRow(mangaId, manga.genres);
+    fillRecRow(mangaId);
     fillSimilarRow(mangaId, manga.genres);
   } catch (e) {
     view.innerHTML = `<div class="centered">Could not load title: ${esc(e.message)}</div>`;
@@ -4614,40 +4612,31 @@ async function openRecModal(mangaId) {
       for (const id of picks) if (!chosen.has(id)) { await api('/api/recs', { method: 'DELETE', body: JSON.stringify({ mangaId, recId: id }) }); toastTxt.push('removed'); }
       closeModal();
       toast(toastTxt.length ? 'Recommendations saved' : 'No changes');
-      fillRecRow(mangaId, manga.genres);
+      fillRecRow(mangaId);
     } catch (e) { toast(e.message); }
   });
 }
 
-async function fillRecRow(mangaId, genres) {
+async function fillRecRow(mangaId) {
   const row = $('#recRow');
   if (!row) return;
   try {
     const { data } = await api(`/api/recs?manga=${encodeURIComponent(mangaId)}`);
-    if (data && data.length) {
-      const byId = await resolveComickIds(data.map((r) => r.id));
-      const items = data.map((r) => r.id).filter((id) => byId.has(id)).map((id) => byId.get(id));
-      if (items.length) {
-        row.innerHTML = items.map((m) => mangaCard(m, { h: true })).join('');
-        wireCards(row);
-        return;
-      }
+    if (!data.length) {
+      row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
+      return;
     }
-  } catch {}
-  // No reader picks yet — fall back to same-genre titles so the row is never empty.
-  const slugs = [...new Set((genres || []).map((g) => String(g).trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 3);
-  for (const slug of slugs.length ? slugs : ['action']) {
-    try {
-      const { data: items } = await api(`/api/comick/genre?source=mangaread&genre=${encodeURIComponent(slug)}&page=1&enrich=1`);
-      const picks = (items || []).filter((m) => m && m.id && m.id !== mangaId).slice(0, 12);
-      if (picks.length) {
-        row.innerHTML = picks.map((m) => mangaCard(m, { h: true })).join('');
-        wireCards(row);
-        return;
-      }
-    } catch {}
+    const byId = await resolveComickIds(data.map((r) => r.id));
+    const items = data.map((r) => r.id).filter((id) => byId.has(id)).map((id) => byId.get(id));
+    if (!items.length) {
+      row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
+      return;
+    }
+    row.innerHTML = items.map((m) => mangaCard(m, { h: true })).join('');
+    wireCards(row);
+  } catch {
+    row.innerHTML = '<div class="centered small">Could not load recommendations</div>';
   }
-  row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
 }
 
 // "More like this": same-genre titles as the one being viewed, merged across
