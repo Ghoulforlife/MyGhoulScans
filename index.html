@@ -590,7 +590,6 @@ a { color: inherit; text-decoration: none; }
   border: 0; border-bottom: 1px solid var(--line, #2a2a33); border-radius: 0; margin: 0; padding: 11px 16px;
   background: transparent; }
 .chapter-table .ct-row:hover { background: var(--panel2, #1c1c24); }
-.ct-flag { font-size: 16px; }
 .chapter-table .cnum { color: var(--text, #fff); min-width: 0; font-size: 13px; }
 .ct-up { color: var(--muted, #979ba8); font-size: 12px; }
 .ct-date { color: var(--muted, #979ba8); font-size: 12px; }
@@ -3355,7 +3354,6 @@ function chapterListHtml(chapters, progress, counts, manga) {
     const isCurrent = progress && progress.chapter_id === c.url;
     const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
     return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${c.date || 0}" data-group="${esc(group)}"${ext}>
-      <span class="ct-flag">🇬🇧</span>
       <span class="cnum">Ch. ${esc(num)}</span>
       <span class="ct-up">${c.uploads || 2}↑</span>
       <span class="ct-date">${c.date ? esc(timeAgo(c.date)) : ''}</span>

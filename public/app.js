@@ -1722,7 +1722,6 @@ function chapterListHtml(chapters, progress, counts, manga) {
     const isCurrent = progress && progress.chapter_id === c.url;
     const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
     return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${c.date || 0}" data-group="${esc(group)}"${ext}>
-      <span class="ct-flag">🇬🇧</span>
       <span class="cnum">Ch. ${esc(num)}</span>
       <span class="ct-up">${c.uploads || 2}↑</span>
       <span class="ct-date">${c.date ? esc(timeAgo(c.date)) : ''}</span>

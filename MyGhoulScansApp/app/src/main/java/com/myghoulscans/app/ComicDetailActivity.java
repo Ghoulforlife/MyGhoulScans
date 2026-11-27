@@ -599,12 +599,6 @@ public class ComicDetailActivity extends AppCompatActivity {
         rp.bottomMargin = Views.dp(this, 4);
         row.setLayoutParams(rp);
 
-        TextView flag = new TextView(this);
-        flag.setText("🇬🇧");
-        flag.setTextSize(12);
-        flag.setPadding(0, 0, Views.dp(this, 4), 0);
-        row.addView(flag);
-
         TextView t = new TextView(this);
         t.setText(label);
         t.setTextColor(0xFFFFFFFF);
