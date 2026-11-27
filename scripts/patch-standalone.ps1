@@ -37,8 +37,20 @@ $html = $html.Replace($oldHandlers, $newHandlers)
 $recSect = '<div class="sect" id="recSect">'
 $i = $html.IndexOf($recSect)
 if ($i -ge 0) {
-  $j = $html.IndexOf('</div>', $html.IndexOf('id="recRow"', $i))
-  if ($j -ge 0) { $html = $html.Substring(0, $i) + $html.Substring($j + 6) }
+  # Walk div tags so the whole section is removed, including its closing tag.
+  $depth = 0
+  $p = $i
+  $end = -1
+  while ($p -lt $html.Length) {
+    $open = $html.IndexOf('<div', $p)
+    $close = $html.IndexOf('</div>', $p)
+    if ($close -lt 0) { break }
+    if ($open -ge 0 -and $open -lt $close) { $depth++; $p = $open + 4; continue }
+    $depth--
+    $p = $close + 6
+    if ($depth -eq 0) { $end = $p; break }
+  }
+  if ($end -gt 0) { $html = $html.Substring(0, $i) + $html.Substring($end) }
 }
 
 # 6. New CSS
