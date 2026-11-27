@@ -4,9 +4,12 @@ $idxPath = Join-Path $root 'index.html'
 $appPath = Join-Path $root 'public\app.js'
 $cssPath = Join-Path $root 'public\styles.css'
 
-$html = Get-Content $idxPath -Raw
-$app = Get-Content $appPath -Raw
-$css = Get-Content $cssPath -Raw
+# Always read/write UTF-8 explicitly — Windows PowerShell's default ANSI
+# decoding double-encodes non-ASCII characters (arrows, flags, accents).
+$utf8 = New-Object Text.UTF8Encoding($false)
+$html = [IO.File]::ReadAllText($idxPath, $utf8)
+$app  = [IO.File]::ReadAllText($appPath, $utf8)
+$css  = [IO.File]::ReadAllText($cssPath, $utf8)
 
 function Cut([string]$text, [string]$start, [string]$end) {
   $i = $text.IndexOf($start)
@@ -33,5 +36,5 @@ $html = $html.Replace($oldHandlers, $newHandlers)
 $newCss = Cut $css '/* Chapter table (matches the app' '.chapter-list { display: flex;'
 $html = $html.Replace('.chapter-list { display: flex;', $newCss + '.chapter-list { display: flex;')
 
-[IO.File]::WriteAllText($idxPath, $html, (New-Object Text.UTF8Encoding($false)))
-Write-Output "patched index.html: $($html.Length) chars; has ctSortChap=$($html.Contains('ctSortChap'))"
+[IO.File]::WriteAllText($idxPath, $html, $utf8)
+Write-Output "patched index.html: $($html.Length) chars; has ctSortChap=$($html.Contains('ctSortChap')); mojibake=$($html.Contains('Ã¢'))"
