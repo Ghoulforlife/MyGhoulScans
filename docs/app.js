@@ -1724,7 +1724,7 @@ function chapterListHtml(chapters, progress, counts, manga) {
     return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${c.date || 0}" data-group="${esc(group)}"${ext}>
       <span class="cnum">Ch. ${esc(num)}</span>
       <span class="ct-up">${c.uploads || 2}↑</span>
-      <span class="ct-date">${c.date ? esc(timeAgo(c.date)) : ''}</span>
+      <span class="ct-date">${c.date ? esc(timeAgo(c.date)) + '<small>' + esc(chapDate(c.date)) + '</small>' : ''}</span>
       <span class="ct-group">${esc(group)}</span>
     </div>`;
   }).join('');
@@ -1765,6 +1765,12 @@ function timeAgo(ts) {
   if (mo < 12) return mo === 1 ? 'a month' : `${mo} months`;
   const y = Math.floor(mo / 12);
   return y <= 1 ? 'a year' : `${y} years`;
+}
+// Absolute release date ("Nov 27, 2026") shown under the relative age.
+function chapDate(ts) {
+  const d = new Date(Number(ts));
+  if (!Number(ts) || isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 // A chapter entry is navigable only when it carries a usable url.
 function chapterUrl(c) {
@@ -2009,7 +2015,7 @@ async function renderTitle(mangaId) {
     }));
 
     $('#recBtn').addEventListener('click', () => openRecModal(mangaId));
-    fillRecRow(mangaId);
+    fillRecRow(mangaId, manga.genres);
     fillSimilarRow(mangaId, manga.genres);
   } catch (e) {
     view.innerHTML = `<div class="centered">Could not load title: ${esc(e.message)}</div>`;
@@ -2974,31 +2980,40 @@ async function openRecModal(mangaId) {
       for (const id of picks) if (!chosen.has(id)) { await api('/api/recs', { method: 'DELETE', body: JSON.stringify({ mangaId, recId: id }) }); toastTxt.push('removed'); }
       closeModal();
       toast(toastTxt.length ? 'Recommendations saved' : 'No changes');
-      fillRecRow(mangaId);
+      fillRecRow(mangaId, manga.genres);
     } catch (e) { toast(e.message); }
   });
 }
 
-async function fillRecRow(mangaId) {
+async function fillRecRow(mangaId, genres) {
   const row = $('#recRow');
   if (!row) return;
   try {
     const { data } = await api(`/api/recs?manga=${encodeURIComponent(mangaId)}`);
-    if (!data.length) {
-      row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
-      return;
+    if (data && data.length) {
+      const byId = await resolveComickIds(data.map((r) => r.id));
+      const items = data.map((r) => r.id).filter((id) => byId.has(id)).map((id) => byId.get(id));
+      if (items.length) {
+        row.innerHTML = items.map((m) => mangaCard(m, { h: true })).join('');
+        wireCards(row);
+        return;
+      }
     }
-    const byId = await resolveComickIds(data.map((r) => r.id));
-    const items = data.map((r) => r.id).filter((id) => byId.has(id)).map((id) => byId.get(id));
-    if (!items.length) {
-      row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
-      return;
-    }
-    row.innerHTML = items.map((m) => mangaCard(m, { h: true })).join('');
-    wireCards(row);
-  } catch {
-    row.innerHTML = '<div class="centered small">Could not load recommendations</div>';
+  } catch {}
+  // No reader picks yet — fall back to same-genre titles so the row is never empty.
+  const slugs = [...new Set((genres || []).map((g) => String(g).trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean))].slice(0, 3);
+  for (const slug of slugs.length ? slugs : ['action']) {
+    try {
+      const { data: items } = await api(`/api/comick/genre?source=mangaread&genre=${encodeURIComponent(slug)}&page=1&enrich=1`);
+      const picks = (items || []).filter((m) => m && m.id && m.id !== mangaId).slice(0, 12);
+      if (picks.length) {
+        row.innerHTML = picks.map((m) => mangaCard(m, { h: true })).join('');
+        wireCards(row);
+        return;
+      }
+    } catch {}
   }
+  row.innerHTML = '<div class="centered small" style="width:100%;text-align:left">No reader recommendations yet — be the first!</div>';
 }
 
 // "More like this": same-genre titles as the one being viewed, merged across
