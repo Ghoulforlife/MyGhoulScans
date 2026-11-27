@@ -1714,13 +1714,31 @@ function chapterItemHtml(c, progress, counts) {
       <span class="cmeta">${c.date ? `<span class="cdate">${esc(timeAgo(c.date))}</span>` : ''}<span class="read-count ${n ? '' : 'none'}" title="people that read this chapter">&#128065; ${n.toLocaleString()}</span></span>
     </div>`;
 }
-function chapterListHtml(chapters, progress, counts) {
+function chapterListHtml(chapters, progress, counts, manga) {
   const total = chapters.length;
-  const head = chapters.slice(0, MAX_CHAPTERS).map((c) => chapterItemHtml(c, progress, counts)).join('');
-  const tail = total > MAX_CHAPTERS ? chapters.slice(MAX_CHAPTERS).map((c) => chapterItemHtml(c, progress, counts)).join('') : '';
-  return `<div class="chapter-list" id="chapterList">
-    ${head}
-    ${tail ? `<span id="chapterTail" style="display:none">${tail}</span>` : ''}
+  const group = manga && manga.source ? String(manga.source).replace(/^cx:/, '') : 'Mangakakalot';
+  const rows = () => chapters.map((c) => {
+    const num = (c.number || c.number === 0) ? c.number : '?';
+    const isCurrent = progress && progress.chapter_id === c.url;
+    const ext = c.external ? ` data-ext="1" data-url="${esc(c.url)}"` : '';
+    return `<div class="chapter-item ct-row ${isCurrent ? 'current' : ''}" data-cid="${esc(c.url)}" data-num="${esc(num)}" data-date="${c.date || 0}" data-group="${esc(group)}"${ext}>
+      <span class="ct-flag">🇬🇧</span>
+      <span class="cnum">Ch. ${esc(num)}</span>
+      <span class="ct-up">${c.uploads || 2}↑</span>
+      <span class="ct-date">${c.date ? esc(timeAgo(c.date)) : ''}</span>
+      <span class="ct-group">${esc(group)}</span>
+    </div>`;
+  }).join('');
+  const head = rows();
+  return `<div class="chapter-table" id="chapterList">
+    <div class="ct-head">
+      <button class="ct-sort" id="ctSortChap">Chap ↕</button>
+      <input id="ctGoto" class="ct-goto" type="text" placeholder="Goto chap" aria-label="Goto chapter" />
+      <button class="ct-sort" id="ctSortUploaded">Uploaded ↕</button>
+      <button class="ct-sort ct-group-btn" id="ctGroup">Group ↕</button>
+    </div>
+    <div class="ct-rows" id="ctRows">${head}</div>
+    <div class="ct-foot" id="ctFoot">Showing 1 to ${Math.min(total, MAX_CHAPTERS)} of ${total} items</div>
     ${total > MAX_CHAPTERS ? `<button class="btn ghost expand-btn" id="chapterExpand">Show all chapters (${total})</button>` : ''}
   </div>`;
 }
@@ -1826,7 +1844,7 @@ async function renderTitle(mangaId) {
         ${chapters.length ? `<button class="btn ghost" id="readFirstBtn" style="margin-left:auto;font-size:13px">Read Chapter ${esc(firstChapterLabel(chapters))} (first)</button>` : ''}
       </div>
       ${manga.source === 'comix' ? '<div class="comix-inapp"><p class="small" style="margin:4px 0 8px">This title is from comix.to — reading stays on MyGhoulScans. Pick a chapter below and we open the same chapter from another in-app source.</p><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn primary" id="findInAppBtn" style="font-size:13px">Find in-app version</button><span class="small" id="altSrcRow"></span></div></div>' : ''}
-      ${chapters.length ? chapterListHtml(chapters, progress, readCounts)
+      ${chapters.length ? chapterListHtml(chapters, progress, readCounts, manga)
         : `<div class="centered" style="margin:32px 0">
             <p class="small">No chapters found for this title on ${esc(manga.source || 'the source')}.</p>
           </div>`}
@@ -1942,14 +1960,47 @@ async function renderTitle(mangaId) {
       location.hash = `#/reader/${mangaId}/${encodeURIComponent(it.dataset.cid)}/0`;
     });
 
-    $('#chapterExpand')?.addEventListener('click', () => {
-      const tail = $('#chapterTail');
-      const btn = $('#chapterExpand');
-      const expanded = tail.style.display !== 'none';
-      tail.style.display = expanded ? 'none' : '';
-      btn.textContent = expanded ? `Show all chapters (${chapters.length})` : 'Show fewer chapters';
-      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
+    // Chapter table: sortable columns, goto filter, and result count.
+    (() => {
+      const box = $('#chapterList'); if (!box) return;
+      const rowsBox = $('#ctRows');
+      const all = Array.from(rowsBox.querySelectorAll('.ct-row'));
+      all.forEach((r, i) => { if (i >= MAX_CHAPTERS) r.style.display = 'none'; });
+      let expanded = false, sortKey = 'num', asc = false;
+      const refresh = () => {
+        const shown = Array.from(rowsBox.querySelectorAll('.ct-row')).filter((r) => r.style.display !== 'none');
+        const foot = $('#ctFoot');
+        if (foot) foot.textContent = `Showing ${shown.length ? 1 : 0} to ${shown.length} of ${shown.length} items`;
+      };
+      const sort = (key) => {
+        if (sortKey === key) asc = !asc; else { sortKey = key; asc = (key === 'num'); }
+        all.sort((a, b) => {
+          const av = key === 'num' ? parseFloat(a.dataset.num) : key === 'date' ? Number(a.dataset.date) : a.dataset.group;
+          const bv = key === 'num' ? parseFloat(b.dataset.num) : key === 'date' ? Number(b.dataset.date) : b.dataset.group;
+          if (typeof av === 'string') return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+          return asc ? av - bv : bv - av;
+        });
+        all.forEach((r) => { r.style.display = 'none'; rowsBox.appendChild(r); });
+        let n = 0;
+        all.forEach((r) => {
+          const q = ($('#ctGoto')?.value || '').trim();
+          if (q && !String(r.dataset.num).includes(q)) return;
+          if (!expanded && n >= MAX_CHAPTERS) return;
+          r.style.display = ''; n++;
+        });
+        refresh();
+      };
+      $('#ctSortChap')?.addEventListener('click', () => sort('num'));
+      $('#ctSortUploaded')?.addEventListener('click', () => sort('date'));
+      $('#ctGroup')?.addEventListener('click', () => sort('group'));
+      $('#ctGoto')?.addEventListener('input', () => sort(sortKey));
+      $('#chapterExpand')?.addEventListener('click', () => {
+        expanded = !expanded;
+        const btn = $('#chapterExpand');
+        if (btn) btn.textContent = expanded ? 'Show fewer chapters' : `Show all chapters (${chapters.length})`;
+        sort(sortKey);
+      });
+    })();
 
     view.querySelectorAll('.row-ctrl').forEach((b) => b.addEventListener('click', () => {
       const row = document.getElementById(b.dataset.row);

@@ -52,6 +52,9 @@ public class ReaderActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Android may restore this activity after killing the process while the
+        // app was backgrounded — ApiClient must be ready before any sync.
+        ApiClient.init(this);
         setContentView(R.layout.activity_reader);
         // If Android recreated us after the app was backgrounded (e.g. while
         // the user read a notification), fall back to the last saved chapter.
@@ -175,7 +178,8 @@ public class ReaderActivity extends Activity {
                     .putString("chapterUrl", chapterUrl == null ? "" : chapterUrl)
                     .putString("title", returnTitle == null ? "" : returnTitle)
                     .putString("cover", returnCover == null ? "" : returnCover)
-                    .putInt("page", Math.max(0, pg)).apply();
+                    .putInt("page", Math.max(0, pg))
+                    .putLong("at", System.currentTimeMillis()).apply();
         } catch (Exception ignored) {}
     }
 
@@ -549,6 +553,10 @@ public class ReaderActivity extends Activity {
         return m.find() ? Double.parseDouble(m.group(1)) : 0;
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        if (chapterUrl != null) syncProgress(page, true); // save on returning to the reader too
+    }
     @Override protected void onPause() { syncProgress(page, true); super.onPause(); }
     @Override protected void onDestroy() { stopAuto(); pillHandler.removeCallbacks(hidePill); super.onDestroy(); }
     @Override public void onBackPressed() { backToComic(); }

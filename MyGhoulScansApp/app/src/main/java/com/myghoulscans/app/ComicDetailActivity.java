@@ -46,11 +46,16 @@ public class ComicDetailActivity extends AppCompatActivity {
     private boolean bookmarked;
     private boolean descExpanded;
     private String resumeUrl = "";
+    private String resumeLabel = "";
     private int resumePage = 0;
     private JSONArray cloudProgress; // fetched off the main thread with the detail data
+    private long cloudProgressAt = 0;
     private final java.util.Set<String> bookmarkedRecs = new java.util.HashSet<>();
     private final java.util.Map<String, String> recCounts = new java.util.HashMap<>();
     private boolean newestFirst = false;
+    private boolean uploadedAsc = false;
+    private boolean groupAsc = false;
+    private String chapterFilter = "";
     private boolean showAllChapters = false;
     private final java.util.Set<String> downloaded = new java.util.HashSet<>();
 
@@ -239,7 +244,13 @@ public class ComicDetailActivity extends AppCompatActivity {
                             if (mangaId.equals(p.optString("manga_id", ""))) {
                                 resumeUrl = p.optString("chapter_id", "");
                                 resumePage = p.optInt("page", 0);
-                                String resumeLabel = p.optString("chapter_label", "");
+                                resumeLabel = p.optString("chapter_label", "");
+                                try {
+                                    java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(
+                                            "yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+                                    f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                                    cloudProgressAt = f.parse(p.optString("updated_at", "")).getTime();
+                                } catch (Exception ignored) {}
                                 for (int j = 0; j < chapters.length(); j++) {
                                     try {
                                         if (chapters.getJSONObject(j).optString("url", "").equals(resumeUrl)) { resumeIdx = j; break; }
@@ -265,15 +276,26 @@ public class ComicDetailActivity extends AppCompatActivity {
                     }
                 }
             }
-            // Last resort: the chapter stored locally by the reader. This keeps
-            // the app on the same chapter if it was killed while backgrounded.
-            if (resumeIdx < 0) {
-                android.content.SharedPreferences lr = getSharedPreferences("mgs_reader", MODE_PRIVATE);
+            // The reader writes its chapter locally on every sync. If that is
+            // newer than the cloud row (e.g. the save was still in flight when
+            // the user left), use it — otherwise a fast chapter change can look
+            // like it reverted several chapters.
+            android.content.SharedPreferences lr = getSharedPreferences("mgs_reader", MODE_PRIVATE);
+            String localUrl = lr.getString("chapterUrl", "");
+            long localAt = lr.getLong("at", 0);
+            boolean preferLocal = mangaId.equals(lr.getString("mangaId", ""))
+                    && !localUrl.isEmpty() && localAt > cloudProgressAt;
+            if (preferLocal || resumeIdx < 0) {
                 if (mangaId.equals(lr.getString("mangaId", ""))) {
-                    String last = lr.getString("chapterUrl", "");
                     for (int j = 0; j < chapters.length(); j++) {
                         try {
-                            if (chapters.getJSONObject(j).optString("url", "").equals(last)) { resumeUrl = last; resumeIdx = j; break; }
+                            if (chapters.getJSONObject(j).optString("url", "").equals(localUrl)) {
+                                resumeUrl = localUrl; resumeIdx = j;
+                                resumePage = lr.getInt("page", 0);
+                                Object ln = chapters.getJSONObject(j).opt("number");
+                                resumeLabel = "Ch. " + (ln == null ? "?" : ln);
+                                break;
+                            }
                         } catch (Exception ignored) {}
                     }
                 }
@@ -294,8 +316,22 @@ public class ComicDetailActivity extends AppCompatActivity {
                 }
             } catch (Exception ignored) {}
             Button sort = findViewById(R.id.chapterSort);
-            sort.setText(newestFirst ? "Oldest ^" : "Newest v");
-            sort.setOnClickListener(x -> { newestFirst = !newestFirst; sort.setText(newestFirst ? "Oldest ^" : "Newest v"); renderChapters(); });
+            sort.setOnClickListener(x -> { newestFirst = !newestFirst; renderChapters(); });
+            ((Button) findViewById(R.id.chapterUploadedSort)).setOnClickListener(x -> {
+                uploadedAsc = !uploadedAsc; renderChapters();
+            });
+            ((Button) findViewById(R.id.chapterGroup)).setOnClickListener(x -> {
+                groupAsc = !groupAsc; renderChapters();
+            });
+            ((android.widget.EditText) findViewById(R.id.chapterGoto)).addTextChangedListener(
+                    new android.text.TextWatcher() {
+                        public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                        public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                        public void afterTextChanged(android.text.Editable s) {
+                            chapterFilter = s == null ? "" : s.toString().trim();
+                            renderChapters();
+                        }
+                    });
             Button showAll = findViewById(R.id.chapterShowAll);
             showAll.setOnClickListener(x -> { showAllChapters = !showAllChapters; renderChapters(); });
             renderChapters();
@@ -335,7 +371,7 @@ public class ComicDetailActivity extends AppCompatActivity {
             try {
                 JSONObject p = pr.getJSONObject(i);
                 if (mangaId.equals(p.optString("manga_id", ""))) {
-                    String label = p.optString("chapter_label", "Ch. ?");
+                    String label = resumeLabel.isEmpty() ? p.optString("chapter_label", "Ch. ?") : resumeLabel;
                     ((TextView) findViewById(R.id.detailProgress)).setText("Resume " + label);
                     return;
                 }
@@ -468,6 +504,22 @@ public class ComicDetailActivity extends AppCompatActivity {
         star.setTextColor(on ? 0xFFE11D2E : 0xFF979BA8);
     }
 
+    private static void upText(JSONObject c, TextView v) {
+        Object u = c.opt("uploads");
+        int n = u == null ? 2 : (int) (u instanceof Number ? ((Number) u).longValue() : firstNum(String.valueOf(u)));
+        v.setText(n + "↑");
+    }
+
+    private static String timeAgoApp(long ts) {
+        long s = Math.max(0, (System.currentTimeMillis() - ts) / 1000);
+        if (s < 60) return "just now";
+        long m = s / 60; if (m < 60) return m + " mins";
+        long h = m / 60; if (h < 24) return h + " hours";
+        long d = h / 24; if (d < 30) return d + " days";
+        long mo = d / 30; if (mo < 12) return mo + " months";
+        return (mo / 12) + " years";
+    }
+
     private void openDetail(String id, String title, String cover) {
         Intent i = new Intent(this, ComicDetailActivity.class);
         i.putExtra("id", id); i.putExtra("title", title); i.putExtra("cover", cover);
@@ -478,16 +530,31 @@ public class ComicDetailActivity extends AppCompatActivity {
         if (chapterList == null || chapters == null) return;
         chapterList.removeAllViews();
         int n = chapters.length();
-        int limit = showAllChapters ? n : Math.min(5, n);
-        for (int k = 0; k < limit; k++) {
-            int i = newestFirst ? (n - 1 - k) : k;
-            try { chapterList.addView(chapterRow(chapters.getJSONObject(i))); } catch (Exception ignored) {}
+        java.util.List<JSONObject> list = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            try {
+                JSONObject c = chapters.getJSONObject(i);
+                String num = String.valueOf(c.opt("number"));
+                if (!chapterFilter.isEmpty() && !num.contains(chapterFilter)) continue;
+                list.add(c);
+            } catch (Exception ignored) {}
         }
+        java.util.Collections.sort(list, (a, b) -> {
+            if (uploadedAsc) return Long.compare(a.optLong("date", 0), b.optLong("date", 0));
+            double an = firstNum(String.valueOf(a.opt("number"))), bn = firstNum(String.valueOf(b.opt("number")));
+            return newestFirst ? Double.compare(an, bn) : Double.compare(bn, an);
+        });
+        int limit = showAllChapters ? list.size() : Math.min(6, list.size());
+        for (int k = 0; k < limit; k++) {
+            try { chapterList.addView(chapterRow(list.get(k))); } catch (Exception ignored) {}
+        }
+        TextView foot = findViewById(R.id.chapterFooter);
+        if (foot != null) foot.setText("Showing 1 to " + limit + " of " + list.size() + " items");
         Button sa = findViewById(R.id.chapterShowAll);
         if (sa == null) return;
-        if (n > 5) {
+        if (list.size() > 6) {
             sa.setVisibility(View.VISIBLE);
-            sa.setText(showAllChapters ? "Show less" : "See all (" + n + ")");
+            sa.setText(showAllChapters ? "Show less" : "See all (" + list.size() + ")");
         } else {
             sa.setVisibility(View.GONE);
         }
@@ -532,12 +599,44 @@ public class ComicDetailActivity extends AppCompatActivity {
         rp.bottomMargin = Views.dp(this, 4);
         row.setLayoutParams(rp);
 
+        TextView flag = new TextView(this);
+        flag.setText("🇬🇧");
+        flag.setTextSize(12);
+        flag.setPadding(0, 0, Views.dp(this, 4), 0);
+        row.addView(flag);
+
         TextView t = new TextView(this);
         t.setText(label);
-        t.setTextColor(0xFFE11D2E);
-        t.setTextSize(13);
-        t.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        t.setTextColor(0xFFFFFFFF);
+        t.setTextSize(12);
+        t.setSingleLine(true);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f));
         row.addView(t);
+
+        TextView up = new TextView(this);
+        upText(c, up);
+        up.setTextColor(0xFF979BA8);
+        up.setTextSize(10);
+        up.setPadding(Views.dp(this, 2), 0, Views.dp(this, 2), 0);
+        row.addView(up);
+
+        TextView date = new TextView(this);
+        long ts = c.optLong("date", 0);
+        date.setText(ts > 0 ? timeAgoApp(ts) : "");
+        date.setTextColor(0xFF979BA8);
+        date.setTextSize(10);
+        date.setPadding(Views.dp(this, 2), 0, Views.dp(this, 2), 0);
+        row.addView(date);
+
+        TextView grp = new TextView(this);
+        grp.setText(source == null || source.isEmpty() ? "Mangakakalot" : source);
+        grp.setTextColor(0xFF5B8DEF);
+        grp.setTextSize(10);
+        grp.setSingleLine(true);
+        grp.setMaxLines(1);
+        grp.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        grp.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(grp);
 
         boolean isDl = downloaded.contains(url);
         TextView st = new TextView(this);

@@ -73,11 +73,27 @@
                 <TextView android:id="@+id/chapterHead" android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:text="Chapters" android:textColor="@color/white" android:textSize="18sp" />
                 <Button android:id="@+id/chapterSort" android:layout_width="wrap_content" android:layout_height="34dp"
-                    android:text="Newest ↓" android:textSize="11sp" android:textColor="@color/mgs_muted"
+                    android:text="Chap ↕" android:textSize="11sp" android:textColor="@color/mgs_muted"
                     android:background="?android:attr/selectableItemBackground" android:paddingStart="6dp" android:paddingEnd="6dp" />
+            </LinearLayout>
+            <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingStart="12dp" android:paddingEnd="12dp" android:gravity="center_vertical">
+                <EditText android:id="@+id/chapterGoto" android:layout_width="0dp" android:layout_weight="1.2"
+                    android:layout_height="34dp" android:hint="Goto chap" android:textSize="11sp"
+                    android:textColor="@color/white" android:textColorHint="@color/mgs_muted"
+                    android:background="@drawable/mgs_card" android:paddingStart="8dp" android:singleLine="true" />
+                <Button android:id="@+id/chapterUploadedSort" android:layout_width="wrap_content" android:layout_height="34dp"
+                    android:text="Uploaded ↕" android:textSize="10sp" android:textColor="@color/mgs_muted"
+                    android:background="?android:attr/selectableItemBackground" android:paddingStart="4dp" android:paddingEnd="4dp" />
+                <Button android:id="@+id/chapterGroup" android:layout_width="wrap_content" android:layout_height="34dp"
+                    android:text="Group ↕" android:textSize="10sp" android:textColor="@color/mgs_muted"
+                    android:background="?android:attr/selectableItemBackground" android:paddingStart="4dp" android:paddingEnd="4dp" />
             </LinearLayout>
             <LinearLayout android:id="@+id/chapterList" android:orientation="vertical"
                 android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="12dp" android:paddingEnd="12dp" />
+            <TextView android:id="@+id/chapterFooter" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="" android:textColor="@color/mgs_muted" android:textSize="11sp"
+                android:gravity="end" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="4dp" />
             <Button android:id="@+id/chapterShowAll" android:layout_width="wrap_content" android:layout_height="34dp"
                 android:text="Show all chapters" android:textSize="12sp" android:textColor="@color/mgs_accent"
                 android:background="@drawable/mgs_card" android:layout_gravity="center_horizontal"

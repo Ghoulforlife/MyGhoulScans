@@ -539,6 +539,31 @@ a { color: inherit; text-decoration: none; }
 .title-info a.chip:hover { border-color: var(--accent); color: var(--accentHi); }
 .title-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
 
+/* Chapter table (matches the app's chapter list) */
+.chapter-table { margin-top: 14px; border: 1px solid var(--line, #2a2a33); border-radius: 8px; overflow: hidden; }
+.chapter-table .ct-head { display: grid; grid-template-columns: 120px 1fr 130px 110px; align-items: center; gap: 10px;
+  padding: 12px 16px; background: var(--panel2, #1c1c24); border-bottom: 1px solid var(--line, #2a2a33); }
+.ct-sort { background: none; border: 0; color: var(--muted, #979ba8); font-size: 13px; font-weight: 700;
+  cursor: pointer; text-align: left; padding: 0; }
+.ct-sort:hover { color: var(--accent); }
+.ct-goto { background: var(--bg, #111116); border: 1px solid var(--line, #2a2a33); border-radius: 6px;
+  color: var(--text, #fff); padding: 9px 12px; width: 100%; max-width: 320px; font-size: 13px; }
+.ct-goto::placeholder { color: var(--muted, #979ba8); }
+.chapter-table .ct-row { display: grid; grid-template-columns: 120px 1fr 130px 110px; align-items: center; gap: 10px;
+  border: 0; border-bottom: 1px solid var(--line, #2a2a33); border-radius: 0; margin: 0; padding: 11px 16px;
+  background: transparent; }
+.chapter-table .ct-row:hover { background: var(--panel2, #1c1c24); }
+.ct-flag { font-size: 16px; }
+.chapter-table .cnum { color: var(--text, #fff); min-width: 0; font-size: 13px; }
+.ct-up { color: var(--muted, #979ba8); font-size: 12px; }
+.ct-date { color: var(--muted, #979ba8); font-size: 12px; }
+.ct-group { color: #5b8def; font-size: 12px; }
+.ct-foot { text-align: right; padding: 12px 16px; color: var(--muted, #979ba8); font-size: 12px; }
+@media (max-width: 700px) {
+  .chapter-table .ct-head, .chapter-table .ct-row { grid-template-columns: 62px 1fr 46px 76px; gap: 4px; padding: 10px 8px; }
+  .ct-goto { max-width: none; padding: 7px; font-size: 12px; }
+  .ct-group, .ct-date { font-size: 11px; }
+}
 .chapter-list { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .chapter-item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
